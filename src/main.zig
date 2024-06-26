@@ -4,6 +4,8 @@ const string = @import("./string.zig");
 const Allocator = std.mem.Allocator;
 const String = string.String;
 
+// max 16kb
+const MAX_PACKAGE_JSON = 16384;
 const PackageJsonPrefix = "/package.json";
 const NrzMode = enum { Run, Help };
 
@@ -12,6 +14,10 @@ const Nrz = struct {
 
     mode: NrzMode,
     command: String,
+
+    const PackageJson = struct {
+        scripts: std.StringHashMap([]u8),
+    };
 
     pub fn parse(alloc: Allocator, argv: [][:0]u8) !Nrz {
         if (argv.len < 2) {
@@ -58,6 +64,8 @@ const Nrz = struct {
         var packageJsonPath = try String.init(self.alloc, dir);
         defer packageJsonPath.deinit();
 
+        var fileBuf: ?[]u8 = undefined;
+
         while (packageJsonPath.len != 0) {
             const prevPackageJsonPathLen = packageJsonPath.len;
 
@@ -66,13 +74,10 @@ const Nrz = struct {
             if (std.fs.openFileAbsoluteZ(packageJsonPath.value(), .{})) |file| {
                 defer file.close();
 
-                const stats = try file.stat();
-                const fileString = try self.alloc.alloc(u8, stats.size);
-                defer self.alloc.free(fileString);
+                // TODO: maybe use json reader ?
+                fileBuf = try file.reader().readAllAlloc(self.alloc, MAX_PACKAGE_JSON);
 
-                _ = try file.readAll(fileString);
-
-                std.debug.print("{s}\n", .{fileString});
+                break;
             } else |_| {
                 // climb up
             }
@@ -87,7 +92,20 @@ const Nrz = struct {
             }
         }
 
-        // 2. Basic json parser with scripts hashmap
+        if (fileBuf) |fileString| {
+            defer self.alloc.free(fileString);
+
+            // 2. Basic json parser with scripts hashmap
+
+            const parsed = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            defer parsed.deinit();
+
+            std.debug.print("{any}\n", .{parsed.value.scripts});
+            // std.debug.print("{s}\n", .{fileString});
+        } else {
+            std.debug.print("No package.json was found.", .{});
+        }
+
         // 3. Check if node_modules/.bin dir has run command
         // 4. Execute command by directly calling bin executable or package.json command with
         // correct env
