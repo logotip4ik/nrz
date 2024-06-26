@@ -4,6 +4,7 @@ const string = @import("./string.zig");
 const Allocator = std.mem.Allocator;
 const String = string.String;
 
+const PackageJsonPrefix = "/package.json";
 const NrzMode = enum { Run, Help };
 
 const Nrz = struct {
@@ -54,14 +55,38 @@ const Nrz = struct {
         const dir = try std.fs.cwd().realpathAlloc(self.alloc, ".");
         defer self.alloc.free(dir);
 
-        var dirString = try String.init(self.alloc, dir);
-        defer dirString.deinit();
+        var packageJsonPath = try String.init(self.alloc, dir);
+        defer packageJsonPath.deinit();
 
-        std.debug.print("{s}\n", .{dirString.value()});
+        while (packageJsonPath.len != 0) {
+            const prevPackageJsonPathLen = packageJsonPath.len;
 
-        // while (!std.mem.eql(u8, "/", dir)) {}
+            try packageJsonPath.concat(PackageJsonPrefix);
 
-        // 1. Walk up dirs iterator
+            if (std.fs.openFileAbsoluteZ(packageJsonPath.value(), .{})) |file| {
+                defer file.close();
+
+                const stats = try file.stat();
+                const fileString = try self.alloc.alloc(u8, stats.size);
+                defer self.alloc.free(fileString);
+
+                _ = try file.readAll(fileString);
+
+                std.debug.print("{s}\n", .{fileString});
+            } else |_| {
+                // climb up
+            }
+
+            // force to search from old path
+            packageJsonPath.chop(prevPackageJsonPathLen);
+
+            if (packageJsonPath.findLast('/')) |nextSlash| {
+                packageJsonPath.len = nextSlash;
+            } else {
+                packageJsonPath.len = 0;
+            }
+        }
+
         // 2. Basic json parser with scripts hashmap
         // 3. Check if node_modules/.bin dir has run command
         // 4. Execute command by directly calling bin executable or package.json command with

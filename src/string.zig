@@ -68,6 +68,13 @@ pub const String = struct {
         return String.init(self.alloc, self.value());
     }
 
+    pub fn chop(self: *String, newEnd: usize) void {
+        std.debug.assert(newEnd > 0);
+
+        self.*.len = newEnd;
+        self.*.buf[newEnd] = 0;
+    }
+
     pub const IterReverseChunk = struct {
         separator: u8,
         currentString: String,
