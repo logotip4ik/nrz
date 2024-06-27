@@ -7,6 +7,7 @@ const String = string.String;
 // max 16kb
 const MAX_PACKAGE_JSON = 16384;
 const PackageJsonPrefix = "/package.json";
+const NodeModulesPrefix = "/node_modules";
 const NrzMode = enum { Run, Help };
 
 const Nrz = struct {
@@ -14,9 +15,10 @@ const Nrz = struct {
 
     mode: NrzMode,
     command: String,
+    options: String,
 
     const PackageJson = struct {
-        scripts: std.StringHashMap([]u8),
+        scripts: std.json.ArrayHashMap([]u8),
     };
 
     pub fn parse(alloc: Allocator, argv: [][:0]u8) !Nrz {
@@ -24,7 +26,7 @@ const Nrz = struct {
             return error.InvalidInput;
         }
 
-        var forwardStart: u8 = 1;
+        var commandStart: u8 = 1;
 
         var mode = NrzMode.Run;
         if (std.ascii.eqlIgnoreCase("run", argv[1])) {
@@ -32,17 +34,19 @@ const Nrz = struct {
                 return error.InvalidInput;
             }
 
-            forwardStart = 2;
+            commandStart = 2;
         } else if (std.ascii.eqlIgnoreCase("help", argv[1])) {
             mode = NrzMode.Help;
         }
 
-        var command = try String.init(alloc, "");
-        for (forwardStart..argv.len) |i| {
-            try command.concat(argv[i]);
+        const command = try String.init(alloc, argv[commandStart]);
+
+        var options = try String.init(alloc, "");
+        for (commandStart + 1..argv.len) |i| {
+            try options.concat(argv[i]);
 
             if (i != argv.len - 1) {
-                try command.concat(" ");
+                try options.concat(" ");
             }
         }
 
@@ -50,32 +54,36 @@ const Nrz = struct {
             .alloc = alloc,
             .mode = mode,
             .command = command,
+            .options = options,
         };
     }
 
     fn deinit(self: Nrz) void {
         self.command.deinit();
+        self.options.deinit();
     }
 
     fn run(self: Nrz) !void {
-        const dir = try std.fs.cwd().realpathAlloc(self.alloc, ".");
-        defer self.alloc.free(dir);
+        const cwdDir = try std.fs.cwd().realpathAlloc(self.alloc, ".");
 
-        var packageJsonPath = try String.init(self.alloc, dir);
-        defer packageJsonPath.deinit();
+        var packagePath = try String.init(self.alloc, cwdDir);
+        defer packagePath.deinit();
+
+        self.alloc.free(cwdDir);
 
         var fileBuf: ?[]u8 = undefined;
 
-        while (packageJsonPath.len != 0) {
-            const prevPackageJsonPathLen = packageJsonPath.len;
+        while (packagePath.len != 0) {
+            const prevPackageJsonPathLen = packagePath.len;
 
-            try packageJsonPath.concat(PackageJsonPrefix);
+            try packagePath.concat(PackageJsonPrefix);
 
-            if (std.fs.openFileAbsoluteZ(packageJsonPath.value(), .{})) |file| {
+            if (std.fs.openFileAbsoluteZ(packagePath.value(), .{})) |file| {
                 defer file.close();
 
                 // TODO: maybe use json reader ?
                 fileBuf = try file.reader().readAllAlloc(self.alloc, MAX_PACKAGE_JSON);
+                packagePath.chop(prevPackageJsonPathLen);
 
                 break;
             } else |_| {
@@ -83,25 +91,39 @@ const Nrz = struct {
             }
 
             // force to search from old path
-            packageJsonPath.chop(prevPackageJsonPathLen);
+            packagePath.chop(prevPackageJsonPathLen);
 
-            if (packageJsonPath.findLast('/')) |nextSlash| {
-                packageJsonPath.len = nextSlash;
+            if (packagePath.findLast('/')) |nextSlash| {
+                packagePath.len = nextSlash;
             } else {
-                packageJsonPath.len = 0;
+                packagePath.len = 0;
             }
         }
 
         if (fileBuf) |fileString| {
             defer self.alloc.free(fileString);
 
-            // 2. Basic json parser with scripts hashmap
+            var nodeModulesBinPath = try packagePath.copy();
+            defer nodeModulesBinPath.deinit();
+
+            try nodeModulesBinPath.concat(NodeModulesPrefix);
+            try nodeModulesBinPath.concat(".bin");
+
+            std.debug.print("{s}\n", .{nodeModulesBinPath.value()});
+            if (std.fs.openDirAbsoluteZ(nodeModulesBinPath.value(), .{ .iterate = true })) |dir| {
+                defer dir.close();
+
+                std.debug.print("{s}\n", .{nodeModulesBinPath.value()});
+            } else |_| {}
 
             const parsed = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
             defer parsed.deinit();
 
-            std.debug.print("{any}\n", .{parsed.value.scripts});
-            // std.debug.print("{s}\n", .{fileString});
+            if (parsed.value.scripts.map.get(self.command.value())) |script| {
+                std.debug.print("Will run this command \"{s}: {s}\"\n", .{ self.command.value(), script });
+            }
+
+            std.debug.print("{s}\n", .{packagePath.value()});
         } else {
             std.debug.print("No package.json was found.", .{});
         }
