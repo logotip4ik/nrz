@@ -113,12 +113,19 @@ const Nrz = struct {
         }
     };
 
+    const Runable = struct {
+        command: String,
+        dir: []const u8,
+    };
+
     fn run(self: Nrz) !void {
         const cwdDir = try std.process.getCwdAlloc(self.alloc);
         defer self.alloc.free(cwdDir);
 
         var packageWalker = try DirIterator.init(self.alloc, cwdDir);
         defer packageWalker.deinit();
+
+        var runable: ?Runable = null;
 
         while (try packageWalker.next()) |entry| {
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
@@ -128,23 +135,35 @@ const Nrz = struct {
             defer packgeJson.deinit();
 
             if (packgeJson.value.scripts.map.get(self.command.value())) |script| {
-                _ = script;
-                break;
+                runable = .{
+                    .command = try String.init(self.alloc, script),
+                    .dir = entry.dir,
+                };
             } else {
                 var nodeModulesBinString = try String.init(self.alloc, entry.dir);
-                defer nodeModulesBinString.deinit();
 
                 try nodeModulesBinString.concat(NodeModulesBinPrefix);
                 try nodeModulesBinString.concat(self.command.value());
 
-                std.debug.print("{s}\n", .{nodeModulesBinString.value()});
-
                 if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
-                    break;
+                    runable = .{
+                        .command = nodeModulesBinString,
+                        .dir = entry.dir,
+                    };
                 } else |_| {
-                    // noop
+                    nodeModulesBinString.deinit();
                 }
             }
+
+            if (runable != null) {
+                break;
+            }
+        }
+
+        if (runable) |entry| {
+            defer entry.command.deinit();
+
+            std.debug.print("{s} in {s}\n", .{ entry.command.value(), entry.dir });
         }
 
         // 3. Check if node_modules/.bin dir has run command
@@ -165,9 +184,6 @@ pub fn main() !void {
     defer nrz.deinit();
 
     try nrz.run();
-
-    std.debug.print("nrz option: {s}\n", .{@tagName(nrz.mode)});
-    std.debug.print("nrz command: {s}\n", .{nrz.command.value()});
 
     // // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
     // std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
