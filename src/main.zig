@@ -66,54 +66,46 @@ const Nrz = struct {
 
     const DirIterator = struct {
         alloc: Allocator,
-        packageJson: String,
-        nodeModules: String,
-        prevPathLen: usize,
+        dir: String,
+        prevDirLen: usize,
 
         pub fn init(alloc: Allocator, startDir: []const u8) !DirIterator {
-            var dirPath = try String.init(alloc, startDir);
-            try dirPath.concat("/");
+            var dir = try String.init(alloc, startDir);
+            try dir.concat("/");
 
             return .{
                 .alloc = alloc,
-                .packageJson = dirPath,
-                .nodeModules = try dirPath.copy(),
-                .prevPathLen = dirPath.len,
+                .dir = dir,
+                .prevDirLen = dir.len,
             };
         }
 
         pub fn deinit(self: DirIterator) void {
-            self.packageJson.deinit();
-            self.nodeModules.deinit();
+            self.dir.deinit();
         }
 
         fn setNext(self: *DirIterator) bool {
-            // force to search from old path
-            self.packageJson.chop(self.prevPathLen);
-            self.nodeModules.chop(self.prevPathLen);
+            if (self.dir.findLast('/')) |nextSlash| {
+                self.dir.chop(nextSlash);
 
-            if (self.packageJson.findLast('/')) |nextSlash| {
-                self.packageJson.chop(nextSlash);
-                self.nodeModules.chop(nextSlash);
                 return true;
             } else {
-                self.packageJson.chop(0);
-                self.nodeModules.chop(0);
                 return false;
             }
         }
 
-        pub fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, nodeModulesBin: [:0]const u8 } {
+        pub fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: [:0]const u8 } {
             while (self.setNext()) {
-                self.prevPathLen = self.packageJson.len;
+                self.prevDirLen = self.dir.len;
 
-                try self.packageJson.concat(PackageJsonPrefix);
-                try self.nodeModules.concat(NodeModulesBinPrefix);
+                try self.dir.concat(PackageJsonPrefix);
 
-                if (std.fs.openFileAbsoluteZ(self.packageJson.value(), .{})) |file| {
-                    return .{ .packageJson = file, .nodeModulesBin = self.nodeModules.value() };
+                if (std.fs.openFileAbsoluteZ(self.dir.value(), .{})) |file| {
+                    self.dir.chop(self.prevDirLen);
+
+                    return .{ .packageJson = file, .dir = self.dir.value() };
                 } else |_| {
-                    // climb up
+                    self.dir.chop(self.prevDirLen);
                 }
             }
 
@@ -139,11 +131,13 @@ const Nrz = struct {
                 _ = script;
                 break;
             } else {
-                var nodeModulesBinString = try String.init(self.alloc, entry.nodeModulesBin);
+                var nodeModulesBinString = try String.init(self.alloc, entry.dir);
                 defer nodeModulesBinString.deinit();
 
-                try nodeModulesBinString.concat("/");
+                try nodeModulesBinString.concat(NodeModulesBinPrefix);
                 try nodeModulesBinString.concat(self.command.value());
+
+                std.debug.print("{s}\n", .{nodeModulesBinString.value()});
 
                 if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
                     break;
