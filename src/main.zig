@@ -7,7 +7,8 @@ const String = string.String;
 // max 16kb
 const MAX_PACKAGE_JSON = 16384;
 const PackageJsonPrefix = "/package.json";
-const NodeModulesPrefix = "/node_modules";
+const NodeModulesBinPrefix = "/node_modules/.bin/";
+
 const NrzMode = enum { Run, Help };
 
 const Nrz = struct {
@@ -63,69 +64,93 @@ const Nrz = struct {
         self.options.deinit();
     }
 
-    fn run(self: Nrz) !void {
-        const cwdDir = try std.fs.cwd().realpathAlloc(self.alloc, ".");
+    const DirIterator = struct {
+        alloc: Allocator,
+        packageJson: String,
+        nodeModules: String,
+        prevPathLen: usize,
 
-        var packagePath = try String.init(self.alloc, cwdDir);
-        defer packagePath.deinit();
+        pub fn init(alloc: Allocator, startDir: []const u8) !DirIterator {
+            var dirPath = try String.init(alloc, startDir);
+            try dirPath.concat("/");
 
-        self.alloc.free(cwdDir);
+            return .{
+                .alloc = alloc,
+                .packageJson = dirPath,
+                .nodeModules = try dirPath.copy(),
+                .prevPathLen = dirPath.len,
+            };
+        }
 
-        var fileBuf: ?[]u8 = undefined;
+        pub fn deinit(self: DirIterator) void {
+            self.packageJson.deinit();
+            self.nodeModules.deinit();
+        }
 
-        while (packagePath.len != 0) {
-            const prevPackageJsonPathLen = packagePath.len;
-
-            try packagePath.concat(PackageJsonPrefix);
-
-            if (std.fs.openFileAbsoluteZ(packagePath.value(), .{})) |file| {
-                defer file.close();
-
-                // TODO: maybe use json reader ?
-                fileBuf = try file.reader().readAllAlloc(self.alloc, MAX_PACKAGE_JSON);
-                packagePath.chop(prevPackageJsonPathLen);
-
-                break;
-            } else |_| {
-                // climb up
-            }
-
+        fn setNext(self: *DirIterator) bool {
             // force to search from old path
-            packagePath.chop(prevPackageJsonPathLen);
+            self.packageJson.chop(self.prevPathLen);
+            self.nodeModules.chop(self.prevPathLen);
 
-            if (packagePath.findLast('/')) |nextSlash| {
-                packagePath.len = nextSlash;
+            if (self.packageJson.findLast('/')) |nextSlash| {
+                self.packageJson.chop(nextSlash);
+                self.nodeModules.chop(nextSlash);
+                return true;
             } else {
-                packagePath.len = 0;
+                self.packageJson.chop(0);
+                self.nodeModules.chop(0);
+                return false;
             }
         }
 
-        if (fileBuf) |fileString| {
-            defer self.alloc.free(fileString);
+        pub fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, nodeModulesBin: [:0]const u8 } {
+            while (self.setNext()) {
+                self.prevPathLen = self.packageJson.len;
 
-            var nodeModulesBinPath = try packagePath.copy();
-            defer nodeModulesBinPath.deinit();
+                try self.packageJson.concat(PackageJsonPrefix);
+                try self.nodeModules.concat(NodeModulesBinPrefix);
 
-            try nodeModulesBinPath.concat(NodeModulesPrefix);
-            try nodeModulesBinPath.concat(".bin");
-
-            std.debug.print("{s}\n", .{nodeModulesBinPath.value()});
-            if (std.fs.openDirAbsoluteZ(nodeModulesBinPath.value(), .{ .iterate = true })) |dir| {
-                defer dir.close();
-
-                std.debug.print("{s}\n", .{nodeModulesBinPath.value()});
-            } else |_| {}
-
-            const parsed = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
-            defer parsed.deinit();
-
-            if (parsed.value.scripts.map.get(self.command.value())) |script| {
-                std.debug.print("Will run this command \"{s}: {s}\"\n", .{ self.command.value(), script });
+                if (std.fs.openFileAbsoluteZ(self.packageJson.value(), .{})) |file| {
+                    return .{ .packageJson = file, .nodeModulesBin = self.nodeModules.value() };
+                } else |_| {
+                    // climb up
+                }
             }
 
-            std.debug.print("{s}\n", .{packagePath.value()});
-        } else {
-            std.debug.print("No package.json was found.", .{});
+            return null;
+        }
+    };
+
+    fn run(self: Nrz) !void {
+        const cwdDir = try std.process.getCwdAlloc(self.alloc);
+        defer self.alloc.free(cwdDir);
+
+        var packageWalker = try DirIterator.init(self.alloc, cwdDir);
+        defer packageWalker.deinit();
+
+        while (try packageWalker.next()) |entry| {
+            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
+            defer self.alloc.free(fileString);
+
+            const packgeJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            defer packgeJson.deinit();
+
+            if (packgeJson.value.scripts.map.get(self.command.value())) |script| {
+                _ = script;
+                break;
+            } else {
+                var nodeModulesBinString = try String.init(self.alloc, entry.nodeModulesBin);
+                defer nodeModulesBinString.deinit();
+
+                try nodeModulesBinString.concat("/");
+                try nodeModulesBinString.concat(self.command.value());
+
+                if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
+                    break;
+                } else |_| {
+                    // noop
+                }
+            }
         }
 
         // 3. Check if node_modules/.bin dir has run command
