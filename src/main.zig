@@ -163,12 +163,13 @@ const Nrz = struct {
         if (runable) |entry| {
             defer entry.command.deinit();
 
+            // get env map
+            // transform path variable to include all upper dirs with NodeModulesBinPrefix
+            // execute that command with updated env
+
             std.debug.print("{s} in {s}\n", .{ entry.command.value(), entry.dir });
         }
-
-        // 3. Check if node_modules/.bin dir has run command
-        // 4. Execute command by directly calling bin executable or package.json command with
-        // correct env
+        // TODO: handle not found case
     }
 };
 
