@@ -36,7 +36,7 @@ pub const String = struct {
     }
 
     fn allocate(self: *String) !void {
-        self.*.buf = try self.alloc.realloc(self.*.buf, self.buf.len * 2);
+        self.buf = try self.alloc.realloc(self.buf, self.buf.len * 2);
     }
 
     pub fn concat(self: *String, string: [:0]const u8) !void {
@@ -44,9 +44,9 @@ pub const String = struct {
             try self.allocate();
         }
 
-        std.mem.copyForwards(u8, self.*.buf[self.len..self.buf.len], string[0 .. string.len + 1]);
-        self.*.len += string.len;
-        self.*.buf[self.len] = 0;
+        std.mem.copyForwards(u8, self.buf[self.len..self.buf.len], string[0 .. string.len + 1]);
+        self.len += string.len;
+        self.buf[self.len] = 0;
     }
 
     pub fn findLast(self: String, search: u8) ?usize {
@@ -69,10 +69,10 @@ pub const String = struct {
     }
 
     pub fn chop(self: *String, newEnd: usize) void {
-        std.debug.assert(newEnd > 0);
+        std.debug.assert(newEnd >= 0);
 
-        self.*.len = newEnd;
-        self.*.buf[newEnd] = 0;
+        self.len = newEnd;
+        self.buf[newEnd] = 0;
     }
 
     pub const IterReverseChunk = struct {
@@ -102,17 +102,17 @@ pub const String = struct {
             if (chunkStart == null) {
                 const stringSlice = self.currentString.buf[0..self.end.? :0];
 
-                self.*.end = chunkStart;
+                self.end = chunkStart;
 
                 return stringSlice;
             }
 
-            self.*.currentString.buf[chunkStart.?] = 0;
-            self.*.currentString.len = chunkStart.?;
+            self.currentString.buf[chunkStart.?] = 0;
+            self.currentString.len = chunkStart.?;
 
             const stringSlice = self.currentString.buf[chunkStart.? + 1 .. self.end.? :0];
 
-            self.*.end = chunkStart;
+            self.end = chunkStart;
 
             return stringSlice;
         }
