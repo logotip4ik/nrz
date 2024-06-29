@@ -177,7 +177,7 @@ const Nrz = struct {
             }
         }
 
-        if (runable) |command| {
+        if (runable) |*command| {
             defer command.deinit();
 
             const stdout = std.io.getStdOut().writer();
@@ -197,11 +197,15 @@ const Nrz = struct {
 
             try envs.put(pathKey, pathString.value());
 
+            if (self.options.len > 0) {
+                try command.concat(" ");
+                try command.concat(self.options.value());
+            }
+
             _ = std.process.execve(self.alloc, &[_][]const u8{
                 "/bin/sh",
                 "-c",
                 command.value(),
-                self.options.value(),
             }, &envs) catch {};
         }
         // TODO: handle not found case
