@@ -9,7 +9,11 @@ const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
 const NodeModulesBinPrefix = "/node_modules/.bin";
 
-const NrzMode = enum { Run, Help, List };
+const NrzMode = enum {
+    Run,
+    Help,
+    List,
+};
 
 const Nrz = struct {
     alloc: Allocator,
@@ -142,6 +146,26 @@ const Nrz = struct {
         }
     }
 
+    inline fn findBestShell() ?[]const u8 {
+        const shells = &[_][]const u8{
+            "/bin/bash",
+            "/usr/bin/bash",
+            "/bin/sh",
+            "/usr/bin/sh",
+            "/bin/zsh",
+            "/usr/bin/zsh",
+            "/usr/local/bin/zsh",
+        };
+
+        inline for (shells) |shell| {
+            if (std.fs.accessAbsolute(shell, .{})) {
+                return shell;
+            } else |_| {}
+        }
+
+        return null;
+    }
+
     const PackageJson = struct {
         scripts: std.json.ArrayHashMap([]u8),
     };
@@ -160,7 +184,12 @@ const Nrz = struct {
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
             defer self.alloc.free(fileString);
 
-            const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            const packageJson = try std.json.parseFromSlice(
+                PackageJson,
+                self.alloc,
+                fileString,
+                .{ .ignore_unknown_fields = true },
+            );
             defer packageJson.deinit();
 
             if (packageJson.value.scripts.map.get(commandValue)) |script| {
@@ -212,13 +241,22 @@ const Nrz = struct {
                 try command.concat(options.value());
             }
 
-            _ = std.process.execve(self.alloc, &[_][]const u8{
-                "/bin/sh",
-                "-c",
-                command.value(),
-            }, &envs) catch {};
+            const maybeShell = Nrz.findBestShell();
+
+            if (maybeShell) |shell| {
+                _ = std.process.execve(self.alloc, &[_][]const u8{
+                    shell,
+                    "-c",
+                    command.value(),
+                }, &envs) catch unreachable;
+            } else {
+                stdout.print("how are you even working ?", .{}) catch unreachable;
+            }
         } else {
-            stdout.print("\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n", .{commandValue}) catch unreachable;
+            stdout.print(
+                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n",
+                .{commandValue},
+            ) catch unreachable;
         }
     }
 
