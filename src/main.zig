@@ -7,7 +7,7 @@ const String = string.String;
 // max 16kb
 const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
-const NodeModulesBinPrefix = "/node_modules/.bin/";
+const NodeModulesBinPrefix = "/node_modules/.bin";
 
 const NrzMode = enum { Run, Help };
 
@@ -17,10 +17,6 @@ const Nrz = struct {
     mode: NrzMode,
     command: String,
     options: String,
-
-    const PackageJson = struct {
-        scripts: std.json.ArrayHashMap([]u8),
-    };
 
     pub fn parse(alloc: Allocator, argv: [][:0]u8) !Nrz {
         if (argv.len < 2) {
@@ -140,6 +136,10 @@ const Nrz = struct {
             }
         }
     }
+
+    const PackageJson = struct {
+        scripts: std.json.ArrayHashMap([]u8),
+    };
 
     fn run(self: Nrz) !void {
         const cwdDir = try std.process.getCwdAlloc(self.alloc);
