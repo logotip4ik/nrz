@@ -181,6 +181,7 @@ const Nrz = struct {
             defer command.deinit();
 
             const stdout = std.io.getStdOut().writer();
+            // white bold $ gray dimmed command with options
             try stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
                 command.value(),
                 self.options.value(),
@@ -210,6 +211,25 @@ const Nrz = struct {
         }
         // TODO: handle not found case
     }
+
+    fn help(_: Nrz) void {
+        const text =
+            \\Supa-Fast™ cross package manager scripts runner and more
+            \\
+            \\Usage: nrz [command] [...script options]
+            \\
+            \\Arguments:
+            \\  [command] - package manager command (run, more to come...) or script name to run. You can skip this as shorthand to `run`
+            \\
+            \\Options:
+            \\  -h, --help - print this message
+            \\
+            \\Example:
+            \\  nrz dev          - run dev command from closest package.json
+            \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
+        ;
+        std.io.getStdOut().writeAll(text) catch unreachable;
+    }
 };
 
 pub fn main() !void {
@@ -223,8 +243,9 @@ pub fn main() !void {
     const nrz = try Nrz.parse(alloc, args);
     defer nrz.deinit();
 
-    if (nrz.mode == .Run) {
-        try nrz.run();
+    switch (nrz.mode) {
+        .Run => try nrz.run(),
+        .Help => nrz.help(),
     }
 }
 
