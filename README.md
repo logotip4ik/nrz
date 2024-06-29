@@ -38,34 +38,36 @@ This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src
 {
   "scripts": {
     "start": "node index.js",
-    "log": "echo $PATH"
+    "log": "echo $PATH",
+    "empty": ""
   }
 }
 ```
 </details>
 
 ```sh
-hyperfine --warmup=5 --output=pipe '../release/nrn start' './nrr start' 'nrz start' 'node --run start'
+hyperfine --warmup=5 --output=pipe --shell=none '../release/nrn empty' './nrr empty' 'nrz empty' 'node --run empty'
 
-Benchmark 1: ../release/nrn start
-  Time (mean ± σ):      36.9 ms ±   0.5 ms    [User: 22.5 ms, System: 7.4 ms]
-  Range (min … max):    35.8 ms …  38.1 ms    74 runs
+Benchmark 1: ../release/nrn empty
+  Time (mean ± σ):      11.8 ms ±   0.3 ms    [User: 3.0 ms, System: 3.4 ms]
+  Range (min … max):    10.9 ms …  13.3 ms    226 runs
  
-Benchmark 2: ./nrr start
-  Time (mean ± σ):      27.4 ms ±   0.4 ms    [User: 19.0 ms, System: 3.7 ms]
-  Range (min … max):    26.6 ms …  28.4 ms    94 runs
+Benchmark 2: ./nrr empty
+  Time (mean ± σ):       4.6 ms ±   0.3 ms    [User: 0.8 ms, System: 1.5 ms]
+  Range (min … max):     3.4 ms …   5.2 ms    657 runs
  
-Benchmark 3: nrz start
-  Time (mean ± σ):      25.8 ms ±   0.4 ms    [User: 18.6 ms, System: 3.1 ms]
-  Range (min … max):    24.9 ms …  26.8 ms    103 runs
+Benchmark 3: nrz empty
+  Time (mean ± σ):       3.4 ms ±   0.1 ms    [User: 0.4 ms, System: 1.0 ms]
+  Range (min … max):     2.6 ms …   4.3 ms    867 runs
  
-Benchmark 4: node --run start
-  Time (mean ± σ):      40.8 ms ±   0.5 ms    [User: 31.3 ms, System: 4.5 ms]
-  Range (min … max):    39.6 ms …  42.1 ms    67 runs
+Benchmark 4: node --run empty
+  Time (mean ± σ):      18.8 ms ±   0.3 ms    [User: 13.0 ms, System: 2.3 ms]
+  Range (min … max):    18.2 ms …  20.1 ms    159 runs
  
 Summary
-  nrz start ran
-    1.06 ± 0.02 times faster than ./nrr start
-    1.43 ± 0.03 times faster than ../release/nrn start
-    1.58 ± 0.03 times faster than node --run start
+  nrz empty ran
+    1.35 ± 0.10 times faster than ./nrr empty
+    3.45 ± 0.16 times faster than ../release/nrn empty
+    5.47 ± 0.23 times faster than node --run empty
+~/dev/nrn/playground (main) $
 ```
