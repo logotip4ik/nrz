@@ -2,7 +2,7 @@
 
 Same as [nrr](https://github.com/ryanccn/nrr) or [nrn](https://github.com/logotip4ik/nrn), but even faster.
 
-## What to try out ?
+## Want to try out ?
 
 1. Clone this repo
 
