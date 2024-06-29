@@ -18,7 +18,7 @@ const Nrz = struct {
     command: ?String,
     options: ?String,
 
-    pub fn parse(alloc: Allocator, argv: [][:0]u8) !Nrz {
+    pub fn init(alloc: Allocator, argv: [][:0]u8) !Nrz {
         if (argv.len < 2) {
             return .{
                 .alloc = alloc,
@@ -280,7 +280,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const nrz = try Nrz.parse(alloc, args);
+    const nrz = try Nrz.init(alloc, args);
     defer nrz.deinit();
 
     switch (nrz.mode) {
