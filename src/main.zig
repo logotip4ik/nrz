@@ -9,18 +9,23 @@ const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
 const NodeModulesBinPrefix = "/node_modules/.bin";
 
-const NrzMode = enum { Run, Help };
+const NrzMode = enum { Run, Help, List };
 
 const Nrz = struct {
     alloc: Allocator,
 
     mode: NrzMode,
-    command: String,
-    options: String,
+    command: ?String,
+    options: ?String,
 
     pub fn parse(alloc: Allocator, argv: [][:0]u8) !Nrz {
         if (argv.len < 2) {
-            return error.InvalidInput;
+            return .{
+                .alloc = alloc,
+                .mode = .List,
+                .command = null,
+                .options = null,
+            };
         }
 
         var commandStart: u8 = 1;
@@ -56,8 +61,8 @@ const Nrz = struct {
     }
 
     fn deinit(self: Nrz) void {
-        self.command.deinit();
-        self.options.deinit();
+        if (self.command) |command| command.deinit();
+        if (self.options) |options| options.deinit();
     }
 
     const DirIterator = struct {
@@ -142,28 +147,29 @@ const Nrz = struct {
     };
 
     fn run(self: Nrz) !void {
-        const cwdDir = try std.process.getCwdAlloc(self.alloc);
+        const cwdDir = std.process.getCwdAlloc(self.alloc) catch unreachable;
         defer self.alloc.free(cwdDir);
 
         var packageWalker = try DirIterator.init(self.alloc, cwdDir);
         defer packageWalker.deinit();
 
+        const commandValue = self.command.?.value();
         var runable: ?String = null;
 
         while (try packageWalker.next()) |entry| {
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
             defer self.alloc.free(fileString);
 
-            const packgeJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
-            defer packgeJson.deinit();
+            const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            defer packageJson.deinit();
 
-            if (packgeJson.value.scripts.map.get(self.command.value())) |script| {
+            if (packageJson.value.scripts.map.get(commandValue)) |script| {
                 runable = try String.init(self.alloc, script);
             } else {
                 var nodeModulesBinString = try String.init(self.alloc, entry.dir);
 
                 try nodeModulesBinString.concat(NodeModulesBinPrefix);
-                try nodeModulesBinString.concat(self.command.value());
+                try nodeModulesBinString.concat(commandValue);
 
                 if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
                     runable = nodeModulesBinString;
@@ -182,11 +188,13 @@ const Nrz = struct {
         if (runable) |*command| {
             defer command.deinit();
 
+            const options = self.options.?;
+
             // white bold $ gray dimmed command with options
-            try stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
+            stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
                 command.value(),
-                self.options.value(),
-            });
+                options.value(),
+            }) catch unreachable;
 
             var envs = try std.process.getEnvMap(self.alloc);
             defer envs.deinit();
@@ -199,9 +207,9 @@ const Nrz = struct {
 
             try envs.put(pathKey, pathString.value());
 
-            if (self.options.len > 0) {
+            if (options.len > 0) {
                 try command.concat(" ");
-                try command.concat(self.options.value());
+                try command.concat(options.value());
             }
 
             _ = std.process.execve(self.alloc, &[_][]const u8{
@@ -210,7 +218,7 @@ const Nrz = struct {
                 command.value(),
             }, &envs) catch {};
         } else {
-            try stdout.print("\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n", .{self.command.value()});
+            stdout.print("\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n", .{commandValue}) catch unreachable;
         }
     }
 
@@ -227,10 +235,40 @@ const Nrz = struct {
             \\  -h, --help - print this message
             \\
             \\Example:
+            \\  nrz              - will print out all scripts from closest package.json
             \\  nrz dev          - run dev command from closest package.json
             \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
         ;
         std.io.getStdOut().writeAll(text) catch unreachable;
+    }
+
+    fn list(self: Nrz) !void {
+        const cwdDir = std.process.getCwdAlloc(self.alloc) catch unreachable;
+        defer self.alloc.free(cwdDir);
+
+        var packageWalker = try DirIterator.init(self.alloc, cwdDir);
+        defer packageWalker.deinit();
+
+        const stdout = std.io.getStdOut().writer();
+
+        // find first
+        if (try packageWalker.next()) |entry| {
+            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
+            defer self.alloc.free(fileString);
+
+            const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            defer packageJson.deinit();
+
+            var sciptsIterator = packageJson.value.scripts.map.iterator();
+
+            while (sciptsIterator.next()) |mapEntry| {
+                stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{ mapEntry.key_ptr.*, mapEntry.value_ptr.* }) catch unreachable;
+            }
+
+            stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
+        } else {
+            stdout.print("No package.json was found...\n", .{}) catch unreachable;
+        }
     }
 };
 
@@ -248,6 +286,7 @@ pub fn main() !void {
     switch (nrz.mode) {
         .Run => try nrz.run(),
         .Help => nrz.help(),
+        .List => try nrz.list(),
     }
 }
 
