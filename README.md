@@ -17,15 +17,15 @@ Same as [nrr](https://github.com/ryanccn/nrr) or [nrn](https://github.com/logoti
 ## Usage
 
 ```sh
-  nrz dev --host
-  ```
+nrz dev --host
+```
 
 This will run `dev` command from closest `package.json` and pass `--host` and option (it will forward
 everything you handle it).
 
 ```sh
-  nrz eslint ./src
-  ```
+nrz eslint ./src
+```
 
 This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src` as arg.
 
