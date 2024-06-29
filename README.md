@@ -16,18 +16,18 @@ Same as nrr or nrn, but even faster.
 
 ## Usage
 
-- ```sh
-    nrz dev --host
-    ```
+```sh
+  nrz dev --host
+  ```
 
-    This will run `dev` command from closest `package.json` and pass `--host` and option (it will forward
-    everything you handle it).
+This will run `dev` command from closest `package.json` and pass `--host` and option (it will forward
+everything you handle it).
 
-- ```sh
-    nrz eslint ./src
-    ```
+```sh
+  nrz eslint ./src
+  ```
 
-    This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src` as arg.
+This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src` as arg.
 
 ## Benchmark
 
