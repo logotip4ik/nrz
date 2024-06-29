@@ -4,7 +4,7 @@ const string = @import("./string.zig");
 const Allocator = std.mem.Allocator;
 const String = string.String;
 
-// max 16kb
+// max 32kb
 const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
 const NodeModulesBinPrefix = "/node_modules/.bin";
