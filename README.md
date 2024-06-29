@@ -32,7 +32,7 @@ This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src
 ## Benchmark
 
 <details>
-<summary>`package.json`</summary>
+<summary>package.json</summary>
 
 ```json
 {
