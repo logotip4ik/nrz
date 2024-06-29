@@ -180,6 +180,12 @@ const Nrz = struct {
         if (runable) |command| {
             defer command.deinit();
 
+            const stdout = std.io.getStdOut().writer();
+            try stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
+                command.value(),
+                self.options.value(),
+            });
+
             var envs = try std.process.getEnvMap(self.alloc);
             defer envs.deinit();
 
@@ -197,8 +203,6 @@ const Nrz = struct {
                 command.value(),
                 self.options.value(),
             }, &envs) catch {};
-
-            std.debug.print("help", .{});
         }
         // TODO: handle not found case
     }
@@ -227,8 +231,6 @@ test "Construct path bin dirs" {
     defer path.deinit();
 
     try Nrz.concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
-
-    std.debug.print("{s}\n", .{path.value()});
 
     try testing.expectEqualDeep("path:path2:/dev/nrz/node_modules/.bin/:/dev/node_modules/.bin/", path.value());
 }
