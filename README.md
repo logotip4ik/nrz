@@ -69,5 +69,4 @@ Summary
     1.35 ± 0.10 times faster than ./nrr empty
     3.45 ± 0.16 times faster than ../release/nrn empty
     5.47 ± 0.23 times faster than node --run empty
-~/dev/nrn/playground (main) $
 ```
