@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 const String = string.String;
 
 // max 16kb
-const MAX_PACKAGE_JSON = 16384;
+const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
 const NodeModulesBinPrefix = "/node_modules/.bin/";
 
