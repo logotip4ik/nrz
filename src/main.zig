@@ -113,10 +113,33 @@ const Nrz = struct {
         }
     };
 
-    const Runable = struct {
-        command: String,
-        dir: []const u8,
-    };
+    pub fn concatBinPathsToPath(alloc: Allocator, path: *String, cwd: []const u8) !void {
+        var cwdString = try String.init(alloc, cwd);
+        defer cwdString.deinit();
+
+        try path.concat(":");
+        try path.concat(cwdString.value());
+        try path.concat(NodeModulesBinPrefix);
+
+        while (cwdString.len > 1) {
+            const nextSlash = cwdString.findLast('/');
+
+            if (nextSlash) |idx| {
+                if (idx == 0) {
+                    // skipping adding `/node_modules/.bin`, very root dir
+                    break;
+                }
+
+                cwdString.chop(idx);
+
+                try path.concat(":");
+                try path.concat(cwdString.value());
+                try path.concat(NodeModulesBinPrefix);
+            } else {
+                cwdString.chop(0);
+            }
+        }
+    }
 
     fn run(self: Nrz) !void {
         const cwdDir = try std.process.getCwdAlloc(self.alloc);
@@ -125,7 +148,7 @@ const Nrz = struct {
         var packageWalker = try DirIterator.init(self.alloc, cwdDir);
         defer packageWalker.deinit();
 
-        var runable: ?Runable = null;
+        var runable: ?String = null;
 
         while (try packageWalker.next()) |entry| {
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
@@ -135,10 +158,7 @@ const Nrz = struct {
             defer packgeJson.deinit();
 
             if (packgeJson.value.scripts.map.get(self.command.value())) |script| {
-                runable = .{
-                    .command = try String.init(self.alloc, script),
-                    .dir = entry.dir,
-                };
+                runable = try String.init(self.alloc, script);
             } else {
                 var nodeModulesBinString = try String.init(self.alloc, entry.dir);
 
@@ -146,10 +166,7 @@ const Nrz = struct {
                 try nodeModulesBinString.concat(self.command.value());
 
                 if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
-                    runable = .{
-                        .command = nodeModulesBinString,
-                        .dir = entry.dir,
-                    };
+                    runable = nodeModulesBinString;
                 } else |_| {
                     nodeModulesBinString.deinit();
                 }
@@ -160,14 +177,28 @@ const Nrz = struct {
             }
         }
 
-        if (runable) |entry| {
-            defer entry.command.deinit();
+        if (runable) |command| {
+            defer command.deinit();
 
-            // get env map
-            // transform path variable to include all upper dirs with NodeModulesBinPrefix
-            // execute that command with updated env
+            var envs = try std.process.getEnvMap(self.alloc);
+            defer envs.deinit();
 
-            std.debug.print("{s} in {s}\n", .{ entry.command.value(), entry.dir });
+            const pathKey = "PATH";
+            var pathString = try String.init(self.alloc, envs.get(pathKey).?);
+            defer pathString.deinit();
+
+            try Nrz.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
+
+            try envs.put(pathKey, pathString.value());
+
+            _ = std.process.execve(self.alloc, &[_][]const u8{
+                "/bin/sh",
+                "-c",
+                command.value(),
+                self.options.value(),
+            }, &envs) catch {};
+
+            std.debug.print("help", .{});
         }
         // TODO: handle not found case
     }
@@ -184,26 +215,20 @@ pub fn main() !void {
     const nrz = try Nrz.parse(alloc, args);
     defer nrz.deinit();
 
-    try nrz.run();
-
-    // // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    // std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-
-    // // stdout is for the actual output of your application, for example if you
-    // // are implementing gzip, then only the compressed bytes should be sent to
-    // // stdout, not any debugging messages.
-    // const stdout_file = std.io.getStdOut().writer();
-    // var bw = std.io.bufferedWriter(stdout_file);
-    // const stdout = bw.writer();
-
-    // try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    // try bw.flush(); // don't forget to flush!
+    if (nrz.mode == .Run) {
+        try nrz.run();
+    }
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+test "Construct path bin dirs" {
+    const testing = std.testing;
+
+    var path = try String.init(testing.allocator, "path:path2");
+    defer path.deinit();
+
+    try Nrz.concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
+
+    std.debug.print("{s}\n", .{path.value()});
+
+    try testing.expectEqualDeep("path:path2:/dev/nrz/node_modules/.bin/:/dev/node_modules/.bin/", path.value());
 }
