@@ -85,7 +85,7 @@ const Nrz = struct {
             self.dir.deinit();
         }
 
-        fn setNext(self: *DirIterator) bool {
+        inline fn setNext(self: *DirIterator) bool {
             if (self.dir.findLast('/')) |nextSlash| {
                 self.dir.chop(nextSlash);
 
@@ -95,7 +95,7 @@ const Nrz = struct {
             }
         }
 
-        pub fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: [:0]const u8 } {
+        inline fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: [:0]const u8 } {
             while (self.setNext()) {
                 self.prevDirLen = self.dir.len;
 
@@ -114,7 +114,7 @@ const Nrz = struct {
         }
     };
 
-    pub fn concatBinPathsToPath(alloc: Allocator, path: *String, cwd: []const u8) !void {
+    inline fn concatBinPathsToPath(alloc: Allocator, path: *String, cwd: []const u8) !void {
         var cwdString = try String.init(alloc, cwd);
         defer cwdString.deinit();
 

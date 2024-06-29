@@ -31,11 +31,11 @@ pub const String = struct {
         self.alloc.free(self.buf);
     }
 
-    pub fn value(self: String) [:0]const u8 {
+    pub inline fn value(self: String) [:0]const u8 {
         return self.buf[0..self.len :0];
     }
 
-    fn allocate(self: *String) !void {
+    inline fn allocate(self: *String) !void {
         self.buf = try self.alloc.realloc(self.buf, self.buf.len * 2);
     }
 
@@ -68,7 +68,7 @@ pub const String = struct {
         return String.init(self.alloc, self.value());
     }
 
-    pub fn chop(self: *String, newEnd: usize) void {
+    pub inline fn chop(self: *String, newEnd: usize) void {
         std.debug.assert(newEnd >= 0);
 
         self.len = newEnd;
