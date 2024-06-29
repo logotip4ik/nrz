@@ -177,10 +177,11 @@ const Nrz = struct {
             }
         }
 
+        const stdout = std.io.getStdOut().writer();
+
         if (runable) |*command| {
             defer command.deinit();
 
-            const stdout = std.io.getStdOut().writer();
             // white bold $ gray dimmed command with options
             try stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
                 command.value(),
@@ -208,8 +209,9 @@ const Nrz = struct {
                 "-c",
                 command.value(),
             }, &envs) catch {};
+        } else {
+            try stdout.print("\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n", .{self.command.value()});
         }
-        // TODO: handle not found case
     }
 
     fn help(_: Nrz) void {
