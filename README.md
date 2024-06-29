@@ -45,22 +45,27 @@ This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src
 </details>
 
 ```sh
-hyperfine --warmup=5 --output=pipe '../release/nrn start' './nrr start' 'nrz start'
+hyperfine --warmup=5 --output=pipe '../release/nrn start' './nrr start' 'nrz start' 'node --run start'
 
 Benchmark 1: ../release/nrn start
-  Time (mean ± σ):      44.1 ms ±   1.7 ms    [User: 25.7 ms, System: 10.1 ms]
-  Range (min … max):    41.8 ms …  47.9 ms    59 runs
+  Time (mean ± σ):      36.9 ms ±   0.5 ms    [User: 22.5 ms, System: 7.4 ms]
+  Range (min … max):    35.8 ms …  38.1 ms    74 runs
  
 Benchmark 2: ./nrr start
-  Time (mean ± σ):      31.9 ms ±   0.6 ms    [User: 21.2 ms, System: 6.5 ms]
-  Range (min … max):    30.9 ms …  33.8 ms    83 runs
+  Time (mean ± σ):      27.4 ms ±   0.4 ms    [User: 19.0 ms, System: 3.7 ms]
+  Range (min … max):    26.6 ms …  28.4 ms    94 runs
  
 Benchmark 3: nrz start
-  Time (mean ± σ):      29.8 ms ±   0.6 ms    [User: 20.6 ms, System: 5.7 ms]
-  Range (min … max):    28.7 ms …  31.2 ms    86 runs
+  Time (mean ± σ):      25.8 ms ±   0.4 ms    [User: 18.6 ms, System: 3.1 ms]
+  Range (min … max):    24.9 ms …  26.8 ms    103 runs
+ 
+Benchmark 4: node --run start
+  Time (mean ± σ):      40.8 ms ±   0.5 ms    [User: 31.3 ms, System: 4.5 ms]
+  Range (min … max):    39.6 ms …  42.1 ms    67 runs
  
 Summary
   nrz start ran
-    1.07 ± 0.03 times faster than ./nrr start
-    1.48 ± 0.06 times faster than ../release/nrn start
+    1.06 ± 0.02 times faster than ./nrr start
+    1.43 ± 0.03 times faster than ../release/nrn start
+    1.58 ± 0.03 times faster than node --run start
 ```
