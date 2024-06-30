@@ -211,6 +211,7 @@ const Nrz = struct {
                 var nodeModulesBinString = try String.init(self.alloc, entry.dir);
 
                 try nodeModulesBinString.concat(NodeModulesBinPrefix);
+                try nodeModulesBinString.concat("/");
                 try nodeModulesBinString.concat(commandValue);
 
                 if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
