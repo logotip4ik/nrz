@@ -1,8 +1,12 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
 const string = @import("./string.zig");
+const suggest = @import("./suggest.zig");
 
 const Allocator = std.mem.Allocator;
 const String = string.String;
+const Suggestor = suggest.Suggestor;
 
 // max 32kb
 const MAX_PACKAGE_JSON = 32768;
@@ -178,7 +182,14 @@ const Nrz = struct {
         defer packageWalker.deinit();
 
         const commandValue = self.command.?.value();
+
         var runable: ?String = null;
+
+        var availableScripts = std.ArrayList([]const u8).init(self.alloc);
+        defer {
+            for (availableScripts.items) |item| self.alloc.free(item);
+            availableScripts.deinit();
+        }
 
         while (try packageWalker.next()) |entry| {
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
@@ -204,6 +215,16 @@ const Nrz = struct {
                     runable = nodeModulesBinString;
                 } else |_| {
                     nodeModulesBinString.deinit();
+
+                    var sciptsIterator = packageJson.value.scripts.map.iterator();
+
+                    while (sciptsIterator.next()) |script| {
+                        const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
+
+                        @memcpy(scriptKeyCopy, script.key_ptr.*);
+
+                        try availableScripts.append(scriptKeyCopy);
+                    }
                 }
             }
 
@@ -254,9 +275,24 @@ const Nrz = struct {
             }
         } else {
             stdout.print(
-                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n",
+                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n\nDid you mean:\n",
                 .{commandValue},
             ) catch unreachable;
+
+            var scriptSuggestor = try Suggestor.init(self.alloc, availableScripts);
+            defer scriptSuggestor.deinit();
+
+            var i: u8 = 0;
+
+            while (try scriptSuggestor.next(commandValue)) |suggested| {
+                i += 1;
+
+                if (i > 3) {
+                    break;
+                }
+
+                try stdout.print(" - \u{001b}[3m{s}\u{001B}[0m\n", .{suggested});
+            }
         }
     }
 
@@ -311,7 +347,7 @@ const Nrz = struct {
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = if (builtin.mode == .ReleaseFast) std.heap.ArenaAllocator.init(std.heap.page_allocator) else std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     defer _ = gpa.deinit();
 
