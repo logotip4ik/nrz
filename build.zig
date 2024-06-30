@@ -15,15 +15,13 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const string = b.addStaticLibrary(.{
-        .name = "nrz_string",
+    const string = b.addModule("string", .{
         .root_source_file = b.path("src/string.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const suggest = b.addStaticLibrary(.{
-        .name = "nrz_suggest",
+    const suggest = b.addModule("suggest", .{
         .root_source_file = b.path("src/suggest.zig"),
         .target = target,
         .optimize = optimize,
@@ -32,8 +30,6 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
-    b.installArtifact(string);
-    b.installArtifact(suggest);
 
     const exe = b.addExecutable(.{
         .name = "nrz",
@@ -43,6 +39,9 @@ pub fn build(b: *std.Build) void {
         .single_threaded = true,
         .strip = optimize == .ReleaseFast,
     });
+
+    exe.root_module.addImport("string", string);
+    exe.root_module.addImport("suggest", suggest);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

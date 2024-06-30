@@ -1,8 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const string = @import("./string.zig");
-const suggest = @import("./suggest.zig");
+const string = @import("string");
+const suggest = @import("suggest");
 
 const Allocator = std.mem.Allocator;
 const String = string.String;
