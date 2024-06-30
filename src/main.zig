@@ -192,6 +192,8 @@ const Nrz = struct {
         }
 
         while (try packageWalker.next()) |entry| {
+            defer entry.packageJson.close();
+
             const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
             defer self.alloc.free(fileString);
 
