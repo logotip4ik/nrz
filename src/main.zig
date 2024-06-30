@@ -317,7 +317,7 @@ const Nrz = struct {
             \\  nrz dev          - run dev command from closest package.json
             \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
         ;
-        std.io.getStdOut().writeAll(text) catch unreachable;
+        std.io.getStdOut().writeAll(text ++ "\n") catch unreachable;
     }
 
     fn list(self: Nrz) !void {
