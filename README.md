@@ -49,24 +49,24 @@ This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src
 hyperfine --warmup=5 --output=pipe --shell=none '../release/nrn empty' './nrr empty' 'nrz empty' 'node --run empty'
 
 Benchmark 1: ../release/nrn empty
-  Time (mean ± σ):      11.8 ms ±   0.3 ms    [User: 3.0 ms, System: 3.4 ms]
-  Range (min … max):    10.9 ms …  13.3 ms    226 runs
+  Time (mean ± σ):      12.2 ms ±   0.3 ms    [User: 3.0 ms, System: 3.6 ms]
+  Range (min … max):    10.4 ms …  13.9 ms    234 runs
  
 Benchmark 2: ./nrr empty
-  Time (mean ± σ):       4.6 ms ±   0.3 ms    [User: 0.8 ms, System: 1.5 ms]
-  Range (min … max):     3.4 ms …   5.2 ms    657 runs
+  Time (mean ± σ):       4.8 ms ±   0.2 ms    [User: 0.8 ms, System: 1.5 ms]
+  Range (min … max):     3.2 ms …   5.8 ms    641 runs
  
 Benchmark 3: nrz empty
-  Time (mean ± σ):       3.4 ms ±   0.1 ms    [User: 0.4 ms, System: 1.0 ms]
-  Range (min … max):     2.6 ms …   4.3 ms    867 runs
+  Time (mean ± σ):       2.9 ms ±   0.3 ms    [User: 0.4 ms, System: 0.9 ms]
+  Range (min … max):     2.2 ms …   3.6 ms    891 runs
  
 Benchmark 4: node --run empty
-  Time (mean ± σ):      18.8 ms ±   0.3 ms    [User: 13.0 ms, System: 2.3 ms]
-  Range (min … max):    18.2 ms …  20.1 ms    159 runs
+  Time (mean ± σ):      18.6 ms ±   0.2 ms    [User: 12.9 ms, System: 2.2 ms]
+  Range (min … max):    17.6 ms …  20.0 ms    159 runs
  
 Summary
   nrz empty ran
-    1.35 ± 0.10 times faster than ./nrr empty
-    3.45 ± 0.16 times faster than ../release/nrn empty
-    5.47 ± 0.23 times faster than node --run empty
+    1.63 ± 0.19 times faster than ./nrr empty
+    4.14 ± 0.46 times faster than ../release/nrn empty
+    6.35 ± 0.69 times faster than node --run empty
 ```
