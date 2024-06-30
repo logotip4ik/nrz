@@ -235,7 +235,9 @@ const Nrz = struct {
             }
         }
 
-        const stdout = std.io.getStdOut().writer();
+        const writer = std.io.getStdOut().writer();
+        var buf = std.io.bufferedWriter(writer);
+        const stdout = buf.writer();
 
         if (runable) |*command| {
             defer command.deinit();
