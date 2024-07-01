@@ -27,7 +27,7 @@ pub const String = struct {
         };
     }
 
-    pub fn deinit(self: String) void {
+    pub inline fn deinit(self: String) void {
         self.alloc.free(self.buf);
     }
 
@@ -64,7 +64,7 @@ pub const String = struct {
         return null;
     }
 
-    pub fn copy(self: String) !String {
+    pub inline fn copy(self: String) !String {
         return String.init(self.alloc, self.value());
     }
 
