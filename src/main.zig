@@ -232,6 +232,12 @@ const Nrz = struct {
             }
 
             if (runable != null) {
+                var runDir = try std.fs.openDirAbsolute(entry.dir, .{ .access_sub_paths = false });
+
+                try runDir.setAsCwd();
+
+                runDir.close();
+
                 break;
             }
         }
