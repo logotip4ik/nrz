@@ -380,5 +380,5 @@ test "Construct path bin dirs" {
 
     try Nrz.concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
 
-    try testing.expectEqualDeep("path:path2:/dev/nrz/node_modules/.bin/:/dev/node_modules/.bin/", path.value());
+    try testing.expectEqualDeep("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", path.value());
 }
