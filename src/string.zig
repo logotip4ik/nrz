@@ -17,7 +17,7 @@ pub const String = struct {
 
         const buf = try alloc.alloc(u8, bufSize);
 
-        std.mem.copyForwards(u8, buf, string[0..string.len]);
+        std.mem.copyForwards(u8, buf, string);
         buf[string.len] = 0;
 
         return .{
