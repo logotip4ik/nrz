@@ -15,8 +15,8 @@ const NodeModulesBinPrefix = "/node_modules/.bin";
 
 const NrzMode = enum {
     Run,
-    Help,
     List,
+    Help,
 };
 
 const Nrz = struct {
@@ -45,6 +45,8 @@ const Nrz = struct {
             }
 
             commandStart = 2;
+        } else if (std.ascii.eqlIgnoreCase("i", argv[1])) {
+            mode = NrzMode.Help;
         } else if (std.ascii.eqlIgnoreCase("help", argv[1])) {
             mode = NrzMode.Help;
         }
@@ -135,7 +137,7 @@ const Nrz = struct {
 
             if (nextSlash) |idx| {
                 if (idx == 0) {
-                    // skipping adding `/node_modules/.bin`, very root dir
+                    // skipping adding `/node_modules/.bin` at the very root
                     break;
                 }
 
@@ -171,7 +173,7 @@ const Nrz = struct {
     }
 
     const PackageJson = struct {
-        scripts: std.json.ArrayHashMap([]u8),
+        scripts: std.json.ArrayHashMap([]const u8),
     };
 
     fn run(self: Nrz) !void {
