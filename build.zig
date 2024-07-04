@@ -48,6 +48,21 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(exe);
 
+    const exe_check = b.addExecutable(.{
+        .name = "nrz",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = true,
+        .strip = optimize == .ReleaseFast,
+    });
+
+    exe_check.root_module.addImport("string", string);
+    exe_check.root_module.addImport("suggest", suggest);
+
+    const check = b.step("check", "zls build check");
+    check.dependOn(&exe_check.step);
+
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
