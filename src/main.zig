@@ -333,7 +333,9 @@ const Nrz = struct {
         var packageWalker = try DirIterator.init(self.alloc, cwdDir);
         defer packageWalker.deinit();
 
-        const stdout = std.io.getStdOut().writer();
+        const writer = std.io.getStdOut().writer();
+        var buffer = std.io.bufferedWriter(writer);
+        var stdout = buffer.writer();
 
         // find first
         if (try packageWalker.next()) |entry| {
@@ -353,6 +355,8 @@ const Nrz = struct {
         } else {
             stdout.print("No package.json was found...\n", .{}) catch unreachable;
         }
+
+        try buffer.flush();
     }
 };
 
