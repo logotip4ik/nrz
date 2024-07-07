@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      attestations: write
+
+    strategy:
+      matrix:
+        cpu:
+          - x86_64
+          - aarch64
+        os:
+          - macos
+          - linux
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install zig
+        uses: goto-bus-stop/setup-zig@v2
+
+      - name: Build
+        run: zig build build --release=fast --summary all -Dtarget ${{ matrix.cpu }}-${{ matrix.os }}
+
+      - name: Generate build provenance attestations
+        uses: actions/attest-build-provenance@v1
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          subject-path: ./zig-out/bin/nrz
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: "error"
+          name: nrz-${{ matrix.cpu }}-${{ matrix.os }}
+          path: ./zig-out/bin/nrz
