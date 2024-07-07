@@ -4,6 +4,10 @@ Same as [nrr](https://github.com/ryanccn/nrr) or [nrn](https://github.com/logoti
 
 ## Want to try out ?
 
+You can build it yourself, or use latest artifacts from [build ci](https://github.com/logotip4ik/nrz/actions/workflows/build.yml).
+
+To build `nrz`:
+
 1. Clone this repo
 
 2. Build `nrz` with (you will need zig installed):
