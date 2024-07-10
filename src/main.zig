@@ -26,7 +26,7 @@ const Nrz = struct {
     command: ?String,
     options: ?String,
 
-    pub fn init(alloc: Allocator, argv: [][:0]u8) !Nrz {
+    pub fn init(alloc: Allocator, argv: [][]const u8) !Nrz {
         if (argv.len < 2) {
             return .{
                 .alloc = alloc,
@@ -45,8 +45,6 @@ const Nrz = struct {
             }
 
             commandStart = 2;
-        } else if (std.ascii.eqlIgnoreCase("i", argv[1])) {
-            mode = NrzMode.Help;
         } else if (std.ascii.eqlIgnoreCase("help", argv[1])) {
             mode = NrzMode.Help;
         }
@@ -105,13 +103,13 @@ const Nrz = struct {
             }
         }
 
-        inline fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: [:0]const u8 } {
+        inline fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: []const u8 } {
             while (self.setNext()) {
                 self.prevDirLen = self.dir.len;
 
                 try self.dir.concat(PackageJsonPrefix);
 
-                if (std.fs.openFileAbsoluteZ(self.dir.value(), .{})) |file| {
+                if (std.fs.openFileAbsolute(self.dir.value(), .{})) |file| {
                     self.dir.chop(self.prevDirLen);
 
                     return .{ .packageJson = file, .dir = self.dir.value() };
@@ -216,7 +214,7 @@ const Nrz = struct {
                 try nodeModulesBinString.concat("/");
                 try nodeModulesBinString.concat(commandValue);
 
-                if (std.fs.accessAbsoluteZ(nodeModulesBinString.value(), .{})) {
+                if (std.fs.accessAbsolute(nodeModulesBinString.value(), .{})) {
                     runable = nodeModulesBinString;
                 } else |_| {
                     nodeModulesBinString.deinit();
@@ -386,5 +384,5 @@ test "Construct path bin dirs" {
 
     try Nrz.concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
 
-    try testing.expectEqualDeep("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", path.value());
+    try testing.expectEqualStrings("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", path.value());
 }

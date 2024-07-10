@@ -18,7 +18,6 @@ pub const String = struct {
         const buf = try alloc.alloc(u8, bufSize);
 
         std.mem.copyForwards(u8, buf, string);
-        buf[string.len] = 0;
 
         return .{
             .alloc = alloc,
@@ -31,22 +30,21 @@ pub const String = struct {
         self.alloc.free(self.buf);
     }
 
-    pub inline fn value(self: String) [:0]const u8 {
-        return self.buf[0..self.len :0];
+    pub inline fn value(self: String) []const u8 {
+        return self.buf[0..self.len];
     }
 
     inline fn allocate(self: *String) !void {
         self.buf = try self.alloc.realloc(self.buf, self.buf.len * 2);
     }
 
-    pub fn concat(self: *String, string: [:0]const u8) !void {
+    pub fn concat(self: *String, string: []const u8) !void {
         while (self.len + string.len + 1 > self.buf.len) {
             try self.allocate();
         }
 
-        std.mem.copyForwards(u8, self.buf[self.len..self.buf.len], string[0 .. string.len + 1]);
+        std.mem.copyForwards(u8, self.buf[self.len..self.buf.len], string);
         self.len += string.len;
-        self.buf[self.len] = 0;
     }
 
     pub fn findLast(self: String, search: u8) ?usize {
@@ -72,54 +70,6 @@ pub const String = struct {
         std.debug.assert(newEnd >= 0);
 
         self.len = newEnd;
-        self.buf[newEnd] = 0;
-    }
-
-    pub const IterReverseChunk = struct {
-        separator: u8,
-        currentString: String,
-        end: ?usize,
-
-        pub fn init(string: String, separator: u8) !IterReverseChunk {
-            return .{
-                .currentString = try string.copy(),
-                .end = string.len,
-                .separator = separator,
-            };
-        }
-
-        pub fn deinit(self: IterReverseChunk) void {
-            self.currentString.deinit();
-        }
-
-        pub fn next(self: *IterReverseChunk) ?[:0]const u8 {
-            if (self.end == null) {
-                return null;
-            }
-
-            const chunkStart = self.currentString.findLast(self.separator);
-
-            if (chunkStart == null) {
-                const stringSlice = self.currentString.buf[0..self.end.? :0];
-
-                self.end = chunkStart;
-
-                return stringSlice;
-            }
-
-            self.currentString.buf[chunkStart.?] = 0;
-            self.currentString.len = chunkStart.?;
-
-            const stringSlice = self.currentString.buf[chunkStart.? + 1 .. self.end.? :0];
-
-            self.end = chunkStart;
-
-            return stringSlice;
-        }
-    };
-
-    pub fn chunkReversed(self: String, separator: u8) !IterReverseChunk {
-        return try IterReverseChunk.init(try self.copy(), separator);
     }
 };
 
@@ -140,9 +90,7 @@ test "Returns correct value" {
     var string = try String.init(testing.allocator, initString);
     defer string.deinit();
 
-    try testing.expectEqualDeep(initString, string.value());
-    try testing.expectEqual(string.value()[initString.len], 0);
-    try testing.expectEqual(initString[initString.len], string.value()[initString.len]);
+    try testing.expectEqualStrings(initString, string.value());
 }
 
 test "Can concat strings" {
@@ -154,11 +102,11 @@ test "Can concat strings" {
     var string = try String.init(testing.allocator, initString);
     defer string.deinit();
 
-    try testing.expectEqualDeep(initString, string.value());
+    try testing.expectEqualStrings(initString, string.value());
 
     try string.concat(string2);
 
-    try testing.expectEqualDeep(initString ++ string2, string.value());
+    try testing.expectEqualStrings(initString ++ string2, string.value());
 }
 
 test "multiple strings" {
@@ -173,8 +121,8 @@ test "multiple strings" {
     var string2 = try String.init(testing.allocator, initString2);
     defer string2.deinit();
 
-    try testing.expectEqualDeep(initString1, string1.value());
-    try testing.expectEqualDeep(initString2, string2.value());
+    try testing.expectEqualStrings(initString1, string1.value());
+    try testing.expectEqualStrings(initString2, string2.value());
 }
 
 test "Find last char" {
@@ -193,30 +141,4 @@ test "Find last char" {
 
     const char3Idx = string.findLast('h').?;
     try testing.expectEqual(9, char3Idx);
-}
-
-test "Reversed chunk" {
-    const testing = std.testing;
-
-    const initString = "something/like/this";
-
-    var string = try String.init(testing.allocator, initString);
-    defer string.deinit();
-
-    var iter = try String.IterReverseChunk.init(string, '/');
-    defer iter.deinit();
-
-    const chunk1 = iter.next();
-    try testing.expectEqualDeep("this", chunk1.?);
-
-    const chunk2 = iter.next();
-    try testing.expectEqualDeep("like", chunk2.?);
-
-    const chunk3 = iter.next();
-    try testing.expectEqualDeep("something", chunk3.?);
-
-    const chunk4 = iter.next();
-    try testing.expectEqualDeep(null, chunk4);
-
-    try testing.expectEqualDeep(initString, string.value());
 }
