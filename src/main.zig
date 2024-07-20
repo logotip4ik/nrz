@@ -292,12 +292,10 @@ const Nrz = struct {
             var scriptSuggestor = try Suggestor.init(self.alloc, availableScripts);
             defer scriptSuggestor.deinit();
 
-            var i: u8 = 0;
+            var showed: u8 = 0;
 
-            while (try scriptSuggestor.next(commandValue)) |suggested| {
-                i += 1;
-
-                if (i > 3) {
+            while (try scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
+                if (showed == 3) {
                     break;
                 }
 
@@ -349,7 +347,10 @@ const Nrz = struct {
                 var sciptsIterator = scripts.map.iterator();
 
                 while (sciptsIterator.next()) |mapEntry| {
-                    stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{ mapEntry.key_ptr.*, mapEntry.value_ptr.* }) catch unreachable;
+                    stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{
+                        mapEntry.key_ptr.*,
+                        mapEntry.value_ptr.*,
+                    }) catch unreachable;
                 }
 
                 stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;

@@ -39,7 +39,7 @@ pub const String = struct {
     }
 
     pub fn concat(self: *String, string: []const u8) !void {
-        while (self.len + string.len + 1 > self.buf.len) {
+        while (self.len + string.len > self.buf.len) {
             try self.allocate();
         }
 
@@ -67,8 +67,6 @@ pub const String = struct {
     }
 
     pub inline fn chop(self: *String, newEnd: usize) void {
-        std.debug.assert(newEnd >= 0);
-
         self.len = newEnd;
     }
 };
