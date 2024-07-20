@@ -171,7 +171,7 @@ const Nrz = struct {
     }
 
     const PackageJson = struct {
-        scripts: std.json.ArrayHashMap([]const u8),
+        scripts: ?std.json.ArrayHashMap([]const u8),
     };
 
     fn run(self: Nrz) !void {
@@ -205,28 +205,30 @@ const Nrz = struct {
             );
             defer packageJson.deinit();
 
-            if (packageJson.value.scripts.map.get(commandValue)) |script| {
-                runable = try String.init(self.alloc, script);
-            } else {
-                var nodeModulesBinString = try String.init(self.alloc, entry.dir);
+            if (packageJson.value.scripts) |scripts| {
+                if (scripts.map.get(commandValue)) |script| {
+                    runable = try String.init(self.alloc, script);
+                } else {
+                    var nodeModulesBinString = try String.init(self.alloc, entry.dir);
 
-                try nodeModulesBinString.concat(NodeModulesBinPrefix);
-                try nodeModulesBinString.concat("/");
-                try nodeModulesBinString.concat(commandValue);
+                    try nodeModulesBinString.concat(NodeModulesBinPrefix);
+                    try nodeModulesBinString.concat("/");
+                    try nodeModulesBinString.concat(commandValue);
 
-                if (std.fs.accessAbsolute(nodeModulesBinString.value(), .{})) {
-                    runable = nodeModulesBinString;
-                } else |_| {
-                    nodeModulesBinString.deinit();
+                    if (std.fs.accessAbsolute(nodeModulesBinString.value(), .{})) {
+                        runable = nodeModulesBinString;
+                    } else |_| {
+                        nodeModulesBinString.deinit();
 
-                    var sciptsIterator = packageJson.value.scripts.map.iterator();
+                        var sciptsIterator = scripts.map.iterator();
 
-                    while (sciptsIterator.next()) |script| {
-                        const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
+                        while (sciptsIterator.next()) |script| {
+                            const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
 
-                        @memcpy(scriptKeyCopy, script.key_ptr.*);
+                            @memcpy(scriptKeyCopy, script.key_ptr.*);
 
-                        try availableScripts.append(scriptKeyCopy);
+                            try availableScripts.append(scriptKeyCopy);
+                        }
                     }
                 }
             }
@@ -343,13 +345,15 @@ const Nrz = struct {
             const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
             defer packageJson.deinit();
 
-            var sciptsIterator = packageJson.value.scripts.map.iterator();
+            if (packageJson.value.scripts) |scripts| {
+                var sciptsIterator = scripts.map.iterator();
 
-            while (sciptsIterator.next()) |mapEntry| {
-                stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{ mapEntry.key_ptr.*, mapEntry.value_ptr.* }) catch unreachable;
+                while (sciptsIterator.next()) |mapEntry| {
+                    stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{ mapEntry.key_ptr.*, mapEntry.value_ptr.* }) catch unreachable;
+                }
+
+                stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
             }
-
-            stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
         } else {
             stdout.print("No package.json was found...\n", .{}) catch unreachable;
         }
