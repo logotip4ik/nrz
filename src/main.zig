@@ -40,13 +40,13 @@ const Nrz = struct {
         var commandStart: u8 = 1;
 
         var mode = NrzMode.Run;
-        if (std.ascii.eqlIgnoreCase("run", firstArgument)) {
+        if (std.mem.eql(u8, "run", firstArgument)) {
             if (argv.len < 3) {
                 return error.InvalidInput;
             }
 
             commandStart = 2;
-        } else if (std.ascii.eqlIgnoreCase("help", firstArgument)) {
+        } else if (std.mem.eql(u8, "-h", firstArgument) or std.mem.eql(u8, "--help", firstArgument)) {
             mode = NrzMode.Help;
         }
 
