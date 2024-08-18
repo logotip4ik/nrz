@@ -36,16 +36,17 @@ const Nrz = struct {
             };
         }
 
+        const firstArgument = argv[1];
         var commandStart: u8 = 1;
 
         var mode = NrzMode.Run;
-        if (std.ascii.eqlIgnoreCase("run", argv[1])) {
+        if (std.ascii.eqlIgnoreCase("run", firstArgument)) {
             if (argv.len < 3) {
                 return error.InvalidInput;
             }
 
             commandStart = 2;
-        } else if (std.ascii.eqlIgnoreCase("help", argv[1])) {
+        } else if (std.ascii.eqlIgnoreCase("help", firstArgument)) {
             mode = NrzMode.Help;
         }
 
@@ -171,10 +172,12 @@ const Nrz = struct {
     }
 
     const PackageJson = struct {
-        scripts: ?std.json.ArrayHashMap([]const u8),
+        scripts: std.json.ArrayHashMap([]const u8),
     };
 
     fn run(self: Nrz) !void {
+        const stdout = std.io.getStdOut().writer();
+
         const cwdDir = std.process.getCwdAlloc(self.alloc) catch unreachable;
         defer self.alloc.free(cwdDir);
 
@@ -183,7 +186,9 @@ const Nrz = struct {
 
         const commandValue = self.command.?.value();
 
-        var runable: ?String = null;
+        var foundRunable = false;
+        var runable = try String.init(self.alloc, "");
+        defer runable.deinit();
 
         var availableScripts = std.ArrayList([]const u8).init(self.alloc);
         defer {
@@ -205,83 +210,41 @@ const Nrz = struct {
             );
             defer packageJson.deinit();
 
-            if (packageJson.value.scripts) |scripts| {
-                if (scripts.map.get(commandValue)) |script| {
-                    runable = try String.init(self.alloc, script);
-                } else {
-                    var nodeModulesBinString = try String.init(self.alloc, entry.dir);
+            const scriptsMap = packageJson.value.scripts.map;
 
-                    try nodeModulesBinString.concat(NodeModulesBinPrefix);
-                    try nodeModulesBinString.concat("/");
-                    try nodeModulesBinString.concat(commandValue);
+            if (scriptsMap.get(commandValue)) |script| {
+                foundRunable = true;
 
-                    if (std.fs.accessAbsolute(nodeModulesBinString.value(), .{})) {
-                        runable = nodeModulesBinString;
-                    } else |_| {
-                        nodeModulesBinString.deinit();
+                runable.chop(0);
+                try runable.concat(script);
+            } else {
+                try runable.concat(entry.dir);
+                try runable.concat(NodeModulesBinPrefix);
+                try runable.concat("/");
+                try runable.concat(commandValue);
 
-                        var sciptsIterator = scripts.map.iterator();
+                if (std.fs.accessAbsolute(runable.value(), .{})) {
+                    foundRunable = true;
+                } else |_| {
+                    var sciptsIterator = scriptsMap.iterator();
 
-                        while (sciptsIterator.next()) |script| {
-                            const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
+                    while (sciptsIterator.next()) |script| {
+                        const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
 
-                            @memcpy(scriptKeyCopy, script.key_ptr.*);
+                        std.mem.copyForwards(u8, scriptKeyCopy, script.key_ptr.*);
 
-                            try availableScripts.append(scriptKeyCopy);
-                        }
+                        try availableScripts.append(scriptKeyCopy);
                     }
                 }
             }
 
-            if (runable != null) {
+            if (foundRunable) {
                 var runDir = try std.fs.cwd().openDir(entry.dir, .{});
                 defer runDir.close();
 
                 try runDir.setAsCwd();
 
                 break;
-            }
-        }
-
-        const stdout = std.io.getStdOut().writer();
-
-        if (runable) |*command| {
-            defer command.deinit();
-
-            const options = self.options.?;
-
-            // white bold $ gray dimmed command with options
-            stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
-                command.value(),
-                options.value(),
-            }) catch unreachable;
-
-            var envs = try std.process.getEnvMap(self.alloc);
-            defer envs.deinit();
-
-            const pathKey = "PATH";
-            var pathString = try String.init(self.alloc, envs.get(pathKey).?);
-            defer pathString.deinit();
-
-            try Nrz.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
-
-            try envs.put(pathKey, pathString.value());
-
-            if (options.len > 0) {
-                try command.concat(" ");
-                try command.concat(options.value());
-            }
-
-            const maybeShell = Nrz.findBestShell();
-
-            if (maybeShell) |shell| {
-                _ = std.process.execve(self.alloc, &[_][]const u8{
-                    shell,
-                    "-c",
-                    command.value(),
-                }, &envs) catch unreachable;
-            } else {
-                stdout.print("how are you even working ?", .{}) catch unreachable;
             }
         } else {
             stdout.print(
@@ -301,6 +264,44 @@ const Nrz = struct {
 
                 try stdout.print(" - \u{001b}[3m{s}\u{001B}[0m\n", .{suggested});
             }
+
+            return;
+        }
+
+        const options = self.options.?;
+
+        // white bold $ gray dimmed command with options
+        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
+            runable.value(),
+            options.value(),
+        }) catch unreachable;
+
+        var envs = try std.process.getEnvMap(self.alloc);
+        defer envs.deinit();
+
+        const pathKey = "PATH";
+        var pathString = try String.init(self.alloc, envs.get(pathKey).?);
+        defer pathString.deinit();
+
+        try Nrz.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
+
+        try envs.put(pathKey, pathString.value());
+
+        if (options.len > 0) {
+            try runable.concat(" ");
+            try runable.concat(options.value());
+        }
+
+        const maybeShell = Nrz.findBestShell();
+
+        if (maybeShell) |shell| {
+            _ = std.process.execve(self.alloc, &[_][]const u8{
+                shell,
+                "-c",
+                runable.value(),
+            }, &envs) catch unreachable;
+        } else {
+            stdout.print("how are you even working ?", .{}) catch unreachable;
         }
     }
 
@@ -343,18 +344,16 @@ const Nrz = struct {
             const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
             defer packageJson.deinit();
 
-            if (packageJson.value.scripts) |scripts| {
-                var sciptsIterator = scripts.map.iterator();
+            var sciptsIterator = packageJson.value.scripts.map.iterator();
 
-                while (sciptsIterator.next()) |mapEntry| {
-                    stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{
-                        mapEntry.key_ptr.*,
-                        mapEntry.value_ptr.*,
-                    }) catch unreachable;
-                }
-
-                stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
+            while (sciptsIterator.next()) |mapEntry| {
+                stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{
+                    mapEntry.key_ptr.*,
+                    mapEntry.value_ptr.*,
+                }) catch unreachable;
             }
+
+            stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
         } else {
             stdout.print("No package.json was found...\n", .{}) catch unreachable;
         }
