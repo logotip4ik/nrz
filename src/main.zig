@@ -37,17 +37,24 @@ const Nrz = struct {
         }
 
         const firstArgument = argv[1];
+
+        if (std.mem.eql(u8, "-h", firstArgument) or std.mem.eql(u8, "--help", firstArgument)) {
+            return .{
+                .alloc = alloc,
+                .mode = .Help,
+                .command = null,
+                .options = null,
+            };
+        }
+
         var commandStart: u8 = 1;
 
-        var mode = NrzMode.Run;
         if (std.mem.eql(u8, "run", firstArgument)) {
             if (argv.len < 3) {
                 return error.InvalidInput;
             }
 
             commandStart = 2;
-        } else if (std.mem.eql(u8, "-h", firstArgument) or std.mem.eql(u8, "--help", firstArgument)) {
-            mode = NrzMode.Help;
         }
 
         const command = try String.init(alloc, argv[commandStart]);
@@ -63,7 +70,7 @@ const Nrz = struct {
 
         return .{
             .alloc = alloc,
-            .mode = mode,
+            .mode = .Run,
             .command = command,
             .options = options,
         };
