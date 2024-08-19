@@ -225,6 +225,8 @@ const Nrz = struct {
                 runable.chop(0);
                 try runable.concat(script);
             } else {
+                runable.chop(0);
+
                 try runable.concat(entry.dir);
                 try runable.concat(NodeModulesBinPrefix);
                 try runable.concat("/");
