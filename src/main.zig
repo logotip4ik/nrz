@@ -219,14 +219,13 @@ const Nrz = struct {
 
             const scriptsMap = packageJson.value.scripts.map;
 
+            runable.chop(0);
+
             if (scriptsMap.get(commandValue)) |script| {
                 foundRunable = true;
 
-                runable.chop(0);
                 try runable.concat(script);
             } else {
-                runable.chop(0);
-
                 try runable.concat(entry.dir);
                 try runable.concat(NodeModulesBinPrefix);
                 try runable.concat("/");
