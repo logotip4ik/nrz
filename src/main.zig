@@ -195,10 +195,13 @@ const Nrz = struct {
         var runable = try String.init(self.alloc, "");
         defer runable.deinit();
 
-        var availableScripts = std.ArrayList([]const u8).init(self.alloc);
+        var availableScripts = std.StringHashMap([]const u8).init(self.alloc);
         defer {
-            for (availableScripts.items) |item| self.alloc.free(item);
-            availableScripts.deinit();
+            var iter = availableScripts.iterator();
+            while (iter.next()) |entry| {
+                self.alloc.free(entry.key_ptr.*);
+                self.alloc.free(entry.value_ptr.*);
+            }
         }
 
         while (try packageWalker.next()) |entry| {
@@ -235,11 +238,11 @@ const Nrz = struct {
                     var sciptsIterator = scriptsMap.iterator();
 
                     while (sciptsIterator.next()) |script| {
-                        const scriptKeyCopy = try self.alloc.alloc(u8, script.key_ptr.len);
-
-                        std.mem.copyForwards(u8, scriptKeyCopy, script.key_ptr.*);
-
-                        try availableScripts.append(scriptKeyCopy);
+                        const s = try availableScripts.getOrPut(script.key_ptr.*);
+                        if (!s.found_existing) {
+                            s.key_ptr.* = try self.alloc.dupe(u8, script.key_ptr.*);
+                            s.value_ptr.* = try self.alloc.dupe(u8, script.value_ptr.*);
+                        }
                     }
                 }
             }
@@ -253,22 +256,34 @@ const Nrz = struct {
                 break;
             }
         } else {
+            var availableScriptsList = try std.ArrayList([]const u8).initCapacity(self.alloc, availableScripts.capacity());
+            defer {
+                for (availableScriptsList.items) |item| self.alloc.free(item);
+                availableScriptsList.deinit();
+            }
+
+            var scriptsIter = availableScripts.keyIterator();
+            while (scriptsIter.next()) |key| {
+                try availableScriptsList.append(key.*);
+            }
+
+            var scriptSuggestor = try Suggestor.init(self.alloc, availableScriptsList);
+            defer scriptSuggestor.deinit();
+
             stdout.print(
                 "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n\nDid you mean:\n",
                 .{commandValue},
             ) catch unreachable;
 
-            var scriptSuggestor = try Suggestor.init(self.alloc, availableScripts);
-            defer scriptSuggestor.deinit();
-
             var showed: u8 = 0;
-
             while (try scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
                 if (showed == 3) {
                     break;
                 }
 
-                try stdout.print(" - \u{001b}[3m{s}\u{001B}[0m\n", .{suggested});
+                const scriptCommand = availableScripts.get(suggested);
+
+                try stdout.print(" - \u{001b}[1;3m{s}\u{001B}[0m: \u{001B}[2m{s}\u{001B}[0m\n", .{ suggested, scriptCommand.? });
             }
 
             return;
@@ -369,6 +384,8 @@ const Nrz = struct {
 };
 
 pub fn main() !void {
+    @setFloatMode(.optimized);
+
     var gpa = comptime if (builtin.mode == .ReleaseFast) std.heap.ArenaAllocator.init(std.heap.page_allocator) else std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     defer _ = gpa.deinit();
