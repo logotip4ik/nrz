@@ -13,16 +13,14 @@ const MAX_PACKAGE_JSON = 32768;
 const PackageJsonPrefix = "/package.json";
 const NodeModulesBinPrefix = "/node_modules/.bin";
 
-const NrzMode = enum {
-    Run,
-    List,
-    Help,
-};
-
 const Nrz = struct {
     alloc: Allocator,
 
-    mode: NrzMode,
+    mode: enum {
+        Run,
+        List,
+        Help,
+    },
     command: ?String,
     options: ?String,
 
