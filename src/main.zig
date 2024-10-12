@@ -256,6 +256,16 @@ const Nrz = struct {
                 break;
             }
         } else {
+            stdout.print(
+                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n\nDid you mean:\n",
+                .{commandValue},
+            ) catch unreachable;
+
+            const availableScriptsSize = availableScripts.capacity();
+            if (availableScriptsSize == 0) {
+                return;
+            }
+
             var availableScriptsList = try std.ArrayList([]const u8).initCapacity(self.alloc, availableScripts.capacity());
             defer {
                 for (availableScriptsList.items) |item| self.alloc.free(item);
@@ -269,11 +279,6 @@ const Nrz = struct {
 
             var scriptSuggestor = try Suggestor.init(self.alloc, availableScriptsList);
             defer scriptSuggestor.deinit();
-
-            stdout.print(
-                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n\nDid you mean:\n",
-                .{commandValue},
-            ) catch unreachable;
 
             var showed: u8 = 0;
             while (try scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
