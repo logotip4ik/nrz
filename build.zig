@@ -15,18 +15,6 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const string = b.addModule("string", .{
-        .root_source_file = b.path("src/string.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const suggest = b.addModule("suggest", .{
-        .root_source_file = b.path("src/suggest.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
@@ -39,9 +27,6 @@ pub fn build(b: *std.Build) void {
         .single_threaded = true,
         .strip = optimize == .ReleaseFast,
     });
-
-    exe.root_module.addImport("string", string);
-    exe.root_module.addImport("suggest", suggest);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -56,9 +41,6 @@ pub fn build(b: *std.Build) void {
         .single_threaded = true,
         .strip = optimize == .ReleaseFast,
     });
-
-    exe_check.root_module.addImport("string", string);
-    exe_check.root_module.addImport("suggest", suggest);
 
     const check = b.step("check", "zls build check");
     check.dependOn(&exe_check.step);
@@ -96,22 +78,19 @@ pub fn build(b: *std.Build) void {
 
     const run_string_tests = b.addRunArtifact(string_tests);
 
-    const suggest_tests = b.addTest(.{
-        .root_source_file = b.path("src/suggest.zig"),
+    const helpers_tests = b.addTest(.{
+        .root_source_file = b.path("src/helpers.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const run_suggest_tests = b.addRunArtifact(suggest_tests);
+    const run_helpers_tests = b.addRunArtifact(helpers_tests);
 
     const exe_tests = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    exe_tests.root_module.addImport("string", string);
-    exe_tests.root_module.addImport("suggest", suggest);
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
@@ -120,7 +99,7 @@ pub fn build(b: *std.Build) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_string_tests.step);
-    test_step.dependOn(&run_suggest_tests.step);
+    test_step.dependOn(&run_helpers_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
     const clean_step = b.step("clean", "clean caches");

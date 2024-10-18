@@ -1,17 +1,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const string = @import("string");
-const suggest = @import("suggest");
+const string = @import("./string.zig");
+const constants = @import("./constants.zig");
+const helpers = @import("./helpers.zig");
 
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const String = string.String;
-const Suggestor = suggest.Suggestor;
-
-// max 32kb
-const MAX_PACKAGE_JSON = 32768;
-const PackageJsonPrefix = "/package.json";
-const NodeModulesBinPrefix = "/node_modules/.bin";
+const DirIterator = helpers.DirIterator;
+const Suggestor = helpers.Suggestor;
 
 const Nrz = struct {
     alloc: Allocator,
@@ -79,103 +77,6 @@ const Nrz = struct {
         if (self.options) |options| options.deinit();
     }
 
-    const DirIterator = struct {
-        alloc: Allocator,
-        dir: String,
-        prevDirLen: usize,
-
-        pub fn init(alloc: Allocator, startDir: []const u8) !DirIterator {
-            var dir = try String.init(alloc, startDir);
-            try dir.concat("/");
-
-            return .{
-                .alloc = alloc,
-                .dir = dir,
-                .prevDirLen = dir.len,
-            };
-        }
-
-        pub fn deinit(self: DirIterator) void {
-            self.dir.deinit();
-        }
-
-        inline fn setNext(self: *DirIterator) bool {
-            if (self.dir.findLast('/')) |nextSlash| {
-                self.dir.chop(nextSlash);
-
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        inline fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: []const u8 } {
-            while (self.setNext()) {
-                self.prevDirLen = self.dir.len;
-
-                try self.dir.concat(PackageJsonPrefix);
-
-                if (std.fs.openFileAbsolute(self.dir.value(), .{})) |file| {
-                    self.dir.chop(self.prevDirLen);
-
-                    return .{ .packageJson = file, .dir = self.dir.value() };
-                } else |_| {
-                    self.dir.chop(self.prevDirLen);
-                }
-            }
-
-            return null;
-        }
-    };
-
-    inline fn concatBinPathsToPath(alloc: Allocator, path: *String, cwd: []const u8) !void {
-        var cwdString = try String.init(alloc, cwd);
-        defer cwdString.deinit();
-
-        try path.concat(":");
-        try path.concat(cwdString.value());
-        try path.concat(NodeModulesBinPrefix);
-
-        while (cwdString.len > 1) {
-            const nextSlash = cwdString.findLast('/');
-
-            if (nextSlash) |idx| {
-                if (idx == 0) {
-                    // skipping adding `/node_modules/.bin` at the very root
-                    break;
-                }
-
-                cwdString.chop(idx);
-
-                try path.concat(":");
-                try path.concat(cwdString.value());
-                try path.concat(NodeModulesBinPrefix);
-            } else {
-                cwdString.chop(0);
-            }
-        }
-    }
-
-    inline fn findBestShell() ?[]const u8 {
-        const shells = &[_][]const u8{
-            "/bin/bash",
-            "/usr/bin/bash",
-            "/bin/sh",
-            "/usr/bin/sh",
-            "/bin/zsh",
-            "/usr/bin/zsh",
-            "/usr/local/bin/zsh",
-        };
-
-        inline for (shells) |shell| {
-            if (std.fs.accessAbsolute(shell, .{})) {
-                return shell;
-            } else |_| {}
-        }
-
-        return null;
-    }
-
     const PackageJson = struct {
         scripts: std.json.ArrayHashMap([]const u8),
     };
@@ -207,15 +108,24 @@ const Nrz = struct {
         while (try packageWalker.next()) |entry| {
             defer entry.packageJson.close();
 
-            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
+            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, constants.PackageJsonLenMax);
             defer self.alloc.free(fileString);
 
-            const packageJson = try std.json.parseFromSlice(
+            const packageJson = std.json.parseFromSlice(
                 PackageJson,
                 self.alloc,
                 fileString,
-                .{ .ignore_unknown_fields = true },
-            );
+                .{
+                    .ignore_unknown_fields = true,
+                    .allocate = .alloc_if_needed,
+                    .duplicate_field_behavior = .use_last,
+                    .max_value_len = std.math.maxInt(u16),
+                },
+            ) catch {
+                stdout.print("Failed to parse package.json in {s}.", .{entry.dir}) catch unreachable;
+                return;
+            };
+
             defer packageJson.deinit();
 
             const scriptsMap = packageJson.value.scripts.map;
@@ -228,7 +138,7 @@ const Nrz = struct {
                 try runable.concat(script);
             } else {
                 try runable.concat(entry.dir);
-                try runable.concat(NodeModulesBinPrefix);
+                try runable.concat(constants.NodeModulesBinPrefix);
                 try runable.concat("/");
                 try runable.concat(commandValue);
 
@@ -257,7 +167,7 @@ const Nrz = struct {
             }
         } else {
             stdout.print(
-                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n\nDid you mean:\n",
+                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n",
                 .{commandValue},
             ) catch unreachable;
 
@@ -266,7 +176,7 @@ const Nrz = struct {
                 return;
             }
 
-            var availableScriptsList = try std.ArrayList([]const u8).initCapacity(self.alloc, availableScripts.capacity());
+            var availableScriptsList = try std.ArrayList([]const u8).initCapacity(self.alloc, availableScriptsSize);
             defer {
                 for (availableScriptsList.items) |item| self.alloc.free(item);
                 availableScriptsList.deinit();
@@ -277,30 +187,28 @@ const Nrz = struct {
                 try availableScriptsList.append(key.*);
             }
 
-            var scriptSuggestor = try Suggestor.init(self.alloc, availableScriptsList);
-            defer scriptSuggestor.deinit();
+            const scriptSuggestor: Suggestor = .{
+                .alloc = self.alloc,
+                .items = &availableScriptsList,
+            };
+
+            stdout.print("\nDid you mean:\n", .{}) catch unreachable;
 
             var showed: u8 = 0;
-            while (try scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
+            while (scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
                 if (showed == 3) {
                     break;
                 }
 
                 const scriptCommand = availableScripts.get(suggested);
 
-                try stdout.print(" - \u{001b}[1;3m{s}\u{001B}[0m: \u{001B}[2m{s}\u{001B}[0m\n", .{ suggested, scriptCommand.? });
+                stdout.print(" - \u{001b}[1;3m{s}\u{001B}[0m: \u{001B}[2m{s}\u{001B}[0m\n", .{ suggested, scriptCommand.? }) catch unreachable;
             }
 
             return;
         }
 
         const options = self.options.?;
-
-        // white bold $ gray dimmed command with options
-        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s} {s}\u{001B}[0m\n\n", .{
-            runable.value(),
-            options.value(),
-        }) catch unreachable;
 
         var envs = try std.process.getEnvMap(self.alloc);
         defer envs.deinit();
@@ -309,7 +217,7 @@ const Nrz = struct {
         var pathString = try String.init(self.alloc, envs.get(pathKey).?);
         defer pathString.deinit();
 
-        try Nrz.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
+        try helpers.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
 
         try envs.put(pathKey, pathString.value());
 
@@ -318,7 +226,10 @@ const Nrz = struct {
             try runable.concat(options.value());
         }
 
-        const maybeShell = Nrz.findBestShell();
+        // white bold $ gray dimmed command
+        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s}\u{001B}[0m\n\n", .{runable.value()}) catch unreachable;
+
+        const maybeShell = helpers.findBestShell();
 
         if (maybeShell) |shell| {
             _ = std.process.execve(self.alloc, &[_][]const u8{
@@ -347,8 +258,9 @@ const Nrz = struct {
             \\  nrz              - will print out all scripts from closest package.json
             \\  nrz dev          - run dev command from closest package.json
             \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
+            \\
         ;
-        std.io.getStdOut().writeAll(text ++ "\n") catch unreachable;
+        std.io.getStdOut().writeAll(text) catch unreachable;
     }
 
     fn list(self: Nrz) !void {
@@ -364,10 +276,23 @@ const Nrz = struct {
 
         // find first
         if (try packageWalker.next()) |entry| {
-            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, MAX_PACKAGE_JSON);
+            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, constants.PackageJsonLenMax);
             defer self.alloc.free(fileString);
 
-            const packageJson = try std.json.parseFromSlice(PackageJson, self.alloc, fileString, .{ .ignore_unknown_fields = true });
+            const packageJson = std.json.parseFromSlice(
+                PackageJson,
+                self.alloc,
+                fileString,
+                .{
+                    .ignore_unknown_fields = true,
+                    .allocate = .alloc_if_needed,
+                    .duplicate_field_behavior = .use_last,
+                    .max_value_len = std.math.maxInt(u16),
+                },
+            ) catch {
+                stdout.print("Failed to parse package.json in {s}.", .{entry.dir}) catch unreachable;
+                return;
+            };
             defer packageJson.deinit();
 
             var sciptsIterator = packageJson.value.scripts.map.iterator();
@@ -398,7 +323,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const nrz = try Nrz.init(alloc, args);
+    var nrz = try Nrz.init(alloc, args);
     defer nrz.deinit();
 
     switch (nrz.mode) {
@@ -406,15 +331,4 @@ pub fn main() !void {
         .Help => nrz.help(),
         .List => try nrz.list(),
     }
-}
-
-test "Construct path bin dirs" {
-    const testing = std.testing;
-
-    var path = try String.init(testing.allocator, "path:path2");
-    defer path.deinit();
-
-    try Nrz.concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
-
-    try testing.expectEqualStrings("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", path.value());
 }
