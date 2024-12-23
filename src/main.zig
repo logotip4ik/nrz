@@ -122,7 +122,7 @@ const Nrz = struct {
                     .max_value_len = std.math.maxInt(u16),
                 },
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.", .{entry.dir}) catch unreachable;
+                stdout.print("Failed to parse package.json in {s}.\n", .{entry.dir}) catch unreachable;
                 return;
             };
 
@@ -184,10 +184,10 @@ const Nrz = struct {
 
             var scriptsIter = availableScripts.keyIterator();
             while (scriptsIter.next()) |key| {
-                try availableScriptsList.append(key.*);
+                availableScriptsList.appendAssumeCapacity(key.*);
             }
 
-            const scriptSuggestor: Suggestor = .{
+            const scriptSuggestor = Suggestor{
                 .alloc = self.alloc,
                 .items = &availableScriptsList,
             };
@@ -226,8 +226,12 @@ const Nrz = struct {
             try runable.concat(options.value());
         }
 
+        const runnableValue = runable.value();
+
         // white bold $ gray dimmed command
-        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s}\u{001B}[0m\n\n", .{runable.value()}) catch unreachable;
+        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s}\u{001B}[0m\n\n", .{
+            runnableValue,
+        }) catch unreachable;
 
         const maybeShell = helpers.findBestShell();
 
@@ -235,10 +239,10 @@ const Nrz = struct {
             _ = std.process.execve(self.alloc, &[_][]const u8{
                 shell,
                 "-c",
-                runable.value(),
+                runnableValue,
             }, &envs) catch unreachable;
         } else {
-            stdout.print("how are you even working ?", .{}) catch unreachable;
+            stdout.print("how are you even working ?\n", .{}) catch unreachable;
         }
     }
 
@@ -290,7 +294,7 @@ const Nrz = struct {
                     .max_value_len = std.math.maxInt(u16),
                 },
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.", .{entry.dir}) catch unreachable;
+                stdout.print("Failed to parse package.json in {s}.\n", .{entry.dir}) catch unreachable;
                 return;
             };
             defer packageJson.deinit();
