@@ -8,56 +8,48 @@ const String = string.String;
 const assert = std.debug.assert;
 
 pub const DirIterator = struct {
-    alloc: Allocator,
-    dir: String,
-    prevDirLen: u32,
+    dir: []const u8,
+    runFirstIter: bool,
 
-    pub fn init(alloc: Allocator, startDir: []const u8) !DirIterator {
-        var dir = try String.init(alloc, startDir);
-        try dir.concat("/");
-
+    pub fn init(dir: []const u8) DirIterator {
         return .{
-            .alloc = alloc,
             .dir = dir,
-            .prevDirLen = dir.len,
+            .runFirstIter = false,
         };
     }
 
-    pub fn deinit(self: DirIterator) void {
-        self.dir.deinit();
-    }
+    pub fn next(self: *DirIterator) ?[]const u8 {
+        if (self.runFirstIter) {
+            // includes leading slash
+            const dirname = std.fs.path.dirname(self.dir) orelse return null;
 
-    inline fn hasNext(self: *DirIterator) bool {
-        if (self.dir.findLast('/')) |nextSlash| {
-            self.dir.chop(nextSlash);
-
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    pub inline fn next(self: *DirIterator) !?struct { packageJson: std.fs.File, dir: []const u8 } {
-        while (self.hasNext()) {
-            self.prevDirLen = self.dir.len;
-
-            try self.dir.concat(constants.PackageJsonPrefix);
-
-            if (std.fs.openFileAbsolute(self.dir.value(), .{})) |file| {
-                self.dir.chop(self.prevDirLen);
-
-                return .{ .packageJson = file, .dir = self.dir.value() };
-            } else |_| {
-                self.dir.chop(self.prevDirLen);
+            if (dirname.len == 1) {
+                return null;
             }
+
+            self.dir = self.dir[0..dirname.len];
         }
 
-        return null;
+        self.runFirstIter = true;
+
+        return if (self.dir.len == 0) null else self.dir;
     }
 };
 
-// source: https://github.com/XolborGames/FuzzyString/blob/main/src/levenshtein.lua
-fn levenshtein_raw(alloc: Allocator, s: []const u8, t: []const u8) !f16 {
+test {
+    const testing = std.testing;
+    const a = "/dev/home?/something";
+
+    var iter = DirIterator.init(a);
+
+    try testing.expectEqualStrings("/dev/home?/something", iter.next().?);
+    try testing.expectEqualStrings("/dev/home?", iter.next().?);
+    try testing.expectEqualStrings("/dev", iter.next().?);
+    try testing.expect(iter.next() == null);
+    try testing.expect(iter.next() == null);
+}
+
+pub fn levenshteinCompare(s: *const []const u8, t: *const []const u8) f16 {
     if (s.len == 0 or t.len == 0) {
         return 0;
     }
@@ -70,13 +62,14 @@ fn levenshtein_raw(alloc: Allocator, s: []const u8, t: []const u8) !f16 {
         s2 = s;
     }
 
-    const hasPrefixBonus = std.mem.startsWith(u8, s2, s1);
+    const hasPrefixBonus = std.mem.startsWith(u8, s2.*, s1.*);
     const insertionCost: f16 = if (hasPrefixBonus) 0.33 else 1;
 
-    var v0 = try alloc.alloc(f16, s2.len + 1);
-    defer alloc.free(v0);
-    var v1 = try alloc.alloc(f16, s2.len + 1);
-    defer alloc.free(v1);
+    var b1: [1024]f16 = undefined;
+    var b2: [1024]f16 = undefined;
+
+    var v0 = b1[0 .. s2.len + 1];
+    var v1 = b2[0 .. s2.len + 1];
 
     for (0..v0.len) |i| v0[i] = @floatFromInt(i);
 
@@ -86,7 +79,7 @@ fn levenshtein_raw(alloc: Allocator, s: []const u8, t: []const u8) !f16 {
         for (0..s2.len) |j| {
             const deletion = v0[j + 1] + 1;
             const insertion = v1[j] + insertionCost;
-            const substitution = if (s1[i] == s2[j]) v0[j] else v0[j] + 1;
+            const substitution = if (s1.*[i] == s2.*[j]) v0[j] else v0[j] + 1;
 
             v1[j + 1] = @min(deletion, @min(insertion, substitution));
         }
@@ -99,17 +92,10 @@ fn levenshtein_raw(alloc: Allocator, s: []const u8, t: []const u8) !f16 {
     return v0[s2.len];
 }
 
-fn levenshtein(alloc: Allocator, s: []const u8, t: []const u8) !f16 {
-    const score = try levenshtein_raw(alloc, s, t);
-    const sum: f16 = @floatFromInt(s.len + t.len);
-    return 1 - score / sum;
-}
-
 pub const Suggestor = struct {
-    alloc: Allocator,
-    items: *std.ArrayList([]const u8),
+    items: *std.ArrayList(*[]const u8),
 
-    pub fn next(self: Suggestor, query: []const u8) ?[]const u8 {
+    pub fn next(self: Suggestor, query: []const u8) ?*[]const u8 {
         if (self.items.items.len == 0) {
             return null;
         }
@@ -122,7 +108,9 @@ pub const Suggestor = struct {
         var matched: usize = 0;
 
         for (self.items.items, 0..) |item, i| {
-            const score = levenshtein(self.alloc, item, query) catch -100;
+            const raw_score = levenshteinCompare(item, &query);
+            const sum: f16 = @floatFromInt(item.len + query.len);
+            const score = 1 - raw_score / sum;
 
             if (score > largestScore) {
                 largestScore = score;
@@ -134,32 +122,72 @@ pub const Suggestor = struct {
     }
 };
 
-pub inline fn concatBinPathsToPath(alloc: Allocator, path: *String, cwd: []const u8) !void {
-    var cwdString = try String.init(alloc, cwd);
-    defer cwdString.deinit();
+test {
+    const testing = std.testing;
 
-    try path.concat(":");
-    try path.concat(cwdString.value());
-    try path.concat(constants.NodeModulesBinPrefix);
+    var available = std.ArrayList(*[]const u8).init(testing.allocator);
+    defer available.deinit();
 
-    while (cwdString.len > 1) {
-        const nextSlash = cwdString.findLast('/');
+    const strings = [_][]const u8{
+        "perf-test",
+        "dev",
+        "clean",
+        "lint",
+    };
 
-        if (nextSlash) |idx| {
-            if (idx == 0) {
-                // skipping adding `/node_modules/.bin` at the very root
-                break;
-            }
+    available.append(@constCast(&strings[0])) catch unreachable;
+    available.append(@constCast(&strings[1])) catch unreachable;
+    available.append(@constCast(&strings[2])) catch unreachable;
+    available.append(@constCast(&strings[3])) catch unreachable;
 
-            cwdString.chop(idx);
+    var suggestor = Suggestor{
+        .items = &available,
+    };
 
-            try path.concat(":");
-            try path.concat(cwdString.value());
-            try path.concat(constants.NodeModulesBinPrefix);
-        } else {
-            cwdString.chop(0);
-        }
+    const query = "per";
+
+    const next1 = suggestor.next(query).?;
+
+    try testing.expectEqualStrings("perf-test", next1.*);
+
+    const next2 = suggestor.next(query).?;
+
+    try testing.expectEqualStrings("dev", next2.*);
+
+    // don't care about rest results (currently)
+}
+
+pub fn concatBinPathsToPATH(alloc: Allocator, path: []const u8, cwd: []const u8) []const u8 {
+    var newPath = path;
+
+    var buf1: [4096]u8 = undefined;
+    var buf2: [4096]u8 = undefined;
+
+    var cwdIter = DirIterator.init(cwd);
+    var i: u8 = 0;
+    while (cwdIter.next()) |chunk| : (i += 1) {
+        const buf = if (i % 2 == 0) &buf1 else &buf2;
+
+        newPath = std.fmt.bufPrint(buf, "{s}{c}{s}{c}node_modules{c}.bin", .{
+            newPath,
+            std.fs.path.delimiter,
+            chunk,
+            std.fs.path.sep,
+            std.fs.path.sep,
+        }) catch @panic("if you this, open issue in logotip4ik/nrz with code 001");
     }
+
+    return alloc.dupe(u8, newPath) catch unreachable;
+}
+
+test "Construct path bin dirs" {
+    const testing = std.testing;
+    const path = "path:path2";
+
+    const newpath = concatBinPathsToPATH(testing.allocator, path, "/dev/nrz");
+    defer testing.allocator.free(newpath);
+
+    try testing.expectEqualStrings("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", newpath);
 }
 
 pub inline fn findBestShell() ?[]const u8 {
@@ -182,41 +210,25 @@ pub inline fn findBestShell() ?[]const u8 {
     return null;
 }
 
-test {
-    const testing = std.testing;
+pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8) !std.json.Parsed(T) {
+    const contentsLength = try file.readAll(buf);
+    const contents = buf[0..contentsLength];
 
-    var available = std.ArrayList([]const u8).init(testing.allocator);
-    defer available.deinit();
-    try available.appendSlice(&[_][]const u8{
-        "perf-test",
-        "dev",
-        "clean",
-        "lint",
-    });
+    return std.json.parseFromSlice(
+        T,
+        alloc,
+        contents,
+        .{
+            .ignore_unknown_fields = true,
+            .allocate = .alloc_if_needed,
+            .duplicate_field_behavior = .use_last,
+            .max_value_len = std.math.maxInt(u16),
+        },
+    ) catch {
+        if (contentsLength == buf.len) {
+            std.log.warn("Possibly hit buffer limitation. If you see this, open issue in logotip4ik/nrz with code 002\n", .{});
+        }
 
-    var suggestor = try Suggestor.init(testing.allocator, available);
-    defer suggestor.deinit();
-
-    const query = "per";
-
-    const next1 = (try suggestor.next(query)).?;
-
-    try testing.expectEqualDeep("perf-test", next1);
-
-    const next2 = (try suggestor.next(query)).?;
-
-    try testing.expectEqualDeep("dev", next2);
-
-    // don't care about rest results (currently)
-}
-
-test "Construct path bin dirs" {
-    const testing = std.testing;
-
-    var path = try String.init(testing.allocator, "path:path2");
-    defer path.deinit();
-
-    try concatBinPathsToPath(testing.allocator, &path, "/dev/nrz");
-
-    try testing.expectEqualStrings("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", path.value());
+        return error.InvalidJson;
+    };
 }

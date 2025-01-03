@@ -4,12 +4,13 @@ const builtin = @import("builtin");
 const string = @import("./string.zig");
 const constants = @import("./constants.zig");
 const helpers = @import("./helpers.zig");
+const colors = @import("./colors.zig");
 
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const String = string.String;
-const DirIterator = helpers.DirIterator;
 const Suggestor = helpers.Suggestor;
+const Colorist = colors.Colorist;
 
 const Nrz = struct {
     alloc: Allocator,
@@ -84,17 +85,10 @@ const Nrz = struct {
     fn run(self: Nrz) !void {
         const stdout = std.io.getStdOut().writer();
 
-        const cwdDir = std.process.getCwdAlloc(self.alloc) catch unreachable;
+        const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
         defer self.alloc.free(cwdDir);
 
-        var packageWalker = try DirIterator.init(self.alloc, cwdDir);
-        defer packageWalker.deinit();
-
         const commandValue = self.command.?.value();
-
-        var foundRunable = false;
-        var runable = try String.init(self.alloc, "");
-        defer runable.deinit();
 
         var availableScripts = std.StringHashMap([]const u8).init(self.alloc);
         defer {
@@ -103,47 +97,55 @@ const Nrz = struct {
                 self.alloc.free(entry.key_ptr.*);
                 self.alloc.free(entry.value_ptr.*);
             }
+            availableScripts.deinit();
         }
 
-        while (try packageWalker.next()) |entry| {
-            defer entry.packageJson.close();
+        var runnable: []const u8 = undefined;
+        var foundRunnable: ?enum { Script, Bin } = null;
 
-            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, constants.PackageJsonLenMax);
-            defer self.alloc.free(fileString);
+        var dirWalker = helpers.DirIterator.init(cwdDir);
+        var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
+        var pkgContentsBuf: [64000]u8 = undefined; // 64kb should be enough for every package.json ?
+        while (dirWalker.next()) |dir| {
+            const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
+                dir,
+                std.fs.path.sep,
+            }) catch unreachable;
 
-            const packageJson = std.json.parseFromSlice(
+            const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+            const packageJson = helpers.readJson(
                 PackageJson,
                 self.alloc,
-                fileString,
-                .{
-                    .ignore_unknown_fields = true,
-                    .allocate = .alloc_if_needed,
-                    .duplicate_field_behavior = .use_last,
-                    .max_value_len = std.math.maxInt(u16),
-                },
+                pkgFile,
+                &pkgContentsBuf,
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.\n", .{entry.dir}) catch unreachable;
+                stdout.print("Failed to parse package.json in {s}.\n", .{dir}) catch unreachable;
                 return;
             };
-
             defer packageJson.deinit();
 
             const scriptsMap = packageJson.value.scripts.map;
-
-            runable.chop(0);
-
             if (scriptsMap.get(commandValue)) |script| {
-                foundRunable = true;
+                // script in package.json could be empty string
+                foundRunnable = .Script;
 
-                try runable.concat(script);
+                std.mem.copyForwards(u8, &pkgPathBuf, script);
+
+                runnable = pkgPathBuf[0..script.len];
             } else {
-                try runable.concat(entry.dir);
-                try runable.concat(constants.NodeModulesBinPrefix);
-                try runable.concat("/");
-                try runable.concat(commandValue);
+                const binPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}node_modules{c}.bin{c}{s}", .{
+                    dir,
+                    std.fs.path.sep,
+                    std.fs.path.sep,
+                    std.fs.path.sep,
+                    commandValue,
+                }) catch @panic("if you see this, open issue at logotip4ik/nrz");
 
-                if (std.fs.accessAbsolute(runable.value(), .{})) {
-                    foundRunable = true;
+                if (std.fs.openFileAbsolute(binPath, .{})) |file| {
+                    defer file.close();
+
+                    foundRunnable = .Bin;
+                    runnable = binPath;
                 } else |_| {
                     var sciptsIterator = scriptsMap.iterator();
 
@@ -157,8 +159,8 @@ const Nrz = struct {
                 }
             }
 
-            if (foundRunable) {
-                var runDir = try std.fs.cwd().openDir(entry.dir, .{});
+            if (foundRunnable != null) {
+                var runDir = try std.fs.openDirAbsolute(dir, .{});
                 defer runDir.close();
 
                 try runDir.setAsCwd();
@@ -166,83 +168,115 @@ const Nrz = struct {
                 break;
             }
         } else {
-            stdout.print(
-                "\u{001B}[2mcommand not found:\u{001B}[0m \u{001B}[1;37m{s}\u{001B}[0m\n",
-                .{commandValue},
-            ) catch unreachable;
-
-            const availableScriptsSize = availableScripts.capacity();
-            if (availableScriptsSize == 0) {
-                return;
-            }
-
-            var availableScriptsList = try std.ArrayList([]const u8).initCapacity(self.alloc, availableScriptsSize);
-            defer {
-                for (availableScriptsList.items) |item| self.alloc.free(item);
-                availableScriptsList.deinit();
-            }
-
-            var scriptsIter = availableScripts.keyIterator();
-            while (scriptsIter.next()) |key| {
-                availableScriptsList.appendAssumeCapacity(key.*);
-            }
-
-            const scriptSuggestor = Suggestor{
-                .alloc = self.alloc,
-                .items = &availableScriptsList,
-            };
-
-            stdout.print("\nDid you mean:\n", .{}) catch unreachable;
-
-            var showed: u8 = 0;
-            while (scriptSuggestor.next(commandValue)) |suggested| : (showed += 1) {
-                if (showed == 3) {
-                    break;
-                }
-
-                const scriptCommand = availableScripts.get(suggested);
-
-                stdout.print(" - \u{001b}[1;3m{s}\u{001B}[0m: \u{001B}[2m{s}\u{001B}[0m\n", .{ suggested, scriptCommand.? }) catch unreachable;
-            }
-
+            try self.printCommandNotFound(commandValue, &availableScripts);
             return;
         }
-
-        const options = self.options.?;
 
         var envs = try std.process.getEnvMap(self.alloc);
         defer envs.deinit();
 
-        const pathKey = "PATH";
-        var pathString = try String.init(self.alloc, envs.get(pathKey).?);
-        defer pathString.deinit();
+        const newPath = helpers.concatBinPathsToPATH(self.alloc, envs.get("PATH").?, cwdDir);
+        defer self.alloc.free(newPath);
+        envs.put("PATH", newPath) catch unreachable;
 
-        try helpers.concatBinPathsToPath(self.alloc, &pathString, cwdDir);
+        var selfExePathBuf: [std.fs.max_path_bytes]u8 = undefined;
+        const selfExePath = std.fs.selfExePath(&selfExePathBuf) catch "";
+        envs.put("npm_execpath", selfExePath) catch unreachable;
 
-        try envs.put(pathKey, pathString.value());
+        const options = self.options orelse return;
 
         if (options.len > 0) {
-            try runable.concat(" ");
-            try runable.concat(options.value());
+            runnable = std.fmt.bufPrint(&pkgContentsBuf, "{s} {s}", .{
+                runnable,
+                options.value(),
+            }) catch unreachable;
         }
 
-        const runnableValue = runable.value();
-
-        // white bold $ gray dimmed command
-        stdout.print("\u{001B}[1;37m$\u{001B}[0m \u{001B}[2m{s}\u{001B}[0m\n\n", .{
-            runnableValue,
+        const colorist = Colorist.new();
+        stdout.print("{s}${s} {s}{s}{s}\n\n", .{
+            colorist.getColor(.WhiteBold),
+            colorist.getColor(.Reset),
+            //
+            colorist.getColor(.Dimmed),
+            runnable,
+            colorist.getColor(.Reset),
         }) catch unreachable;
 
-        const maybeShell = helpers.findBestShell();
+        if (builtin.mode != .ReleaseFast) {
+            // won't run the script, but will allow gpa to log memory leaks
+            return;
+        }
 
-        if (maybeShell) |shell| {
+        if (helpers.findBestShell()) |shell| {
             _ = std.process.execve(self.alloc, &[_][]const u8{
                 shell,
                 "-c",
-                runnableValue,
+                runnable,
             }, &envs) catch unreachable;
         } else {
             stdout.print("how are you even working ?\n", .{}) catch unreachable;
+        }
+    }
+
+    fn printCommandNotFound(
+        self: Nrz,
+        command: []const u8,
+        availableScripts: *const std.StringHashMap([]const u8),
+    ) !void {
+        const writer = std.io.getStdOut().writer();
+        var buffer = std.io.bufferedWriter(writer);
+        var stdout = buffer.writer();
+        defer buffer.flush() catch unreachable;
+
+        const colorist = Colorist.new();
+
+        stdout.print("{s}command not found:{s} {s}{s}{s}\n", .{
+            colorist.getColor(.Dimmed),
+            //
+            colorist.getColor(.Reset),
+            //
+            colorist.getColor(.WhiteBold),
+            command,
+            colorist.getColor(.Reset),
+        }) catch unreachable;
+
+        const availableScriptsSize = availableScripts.count();
+        if (availableScriptsSize == 0) {
+            return;
+        }
+
+        var availableScriptsList = try std.ArrayList(*[]const u8).initCapacity(self.alloc, availableScriptsSize);
+        // items inside will be cleared by availableScripts defer statement
+        defer availableScriptsList.deinit();
+
+        var scriptsIter = availableScripts.keyIterator();
+        while (scriptsIter.next()) |key| {
+            availableScriptsList.appendAssumeCapacity(key);
+        }
+
+        const scriptSuggestor = Suggestor{
+            .items = &availableScriptsList,
+        };
+
+        stdout.print("\nDid you mean:\n", .{}) catch unreachable;
+
+        var showed: u8 = 0;
+        while (scriptSuggestor.next(command)) |suggested| : (showed += 1) {
+            if (showed == 3) {
+                break;
+            }
+
+            const scriptCommand = availableScripts.get(suggested.*);
+
+            stdout.print(" - {s}{s}{s}: {s}{s}{s}\n", .{
+                colorist.getColor(.WhiteBold),
+                suggested.*,
+                colorist.getColor(.Reset),
+                //
+                colorist.getColor(.Dimmed),
+                scriptCommand.?,
+                colorist.getColor(.Reset),
+            }) catch unreachable;
         }
     }
 
@@ -268,59 +302,74 @@ const Nrz = struct {
     }
 
     fn list(self: Nrz) !void {
-        const cwdDir = std.process.getCwdAlloc(self.alloc) catch unreachable;
-        defer self.alloc.free(cwdDir);
+        const colorist = Colorist.new();
 
-        var packageWalker = try DirIterator.init(self.alloc, cwdDir);
-        defer packageWalker.deinit();
+        const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
+        defer self.alloc.free(cwdDir);
 
         const writer = std.io.getStdOut().writer();
         var buffer = std.io.bufferedWriter(writer);
+        defer buffer.flush() catch unreachable;
+
         var stdout = buffer.writer();
 
-        // find first
-        if (try packageWalker.next()) |entry| {
-            const fileString = try entry.packageJson.readToEndAlloc(self.alloc, constants.PackageJsonLenMax);
-            defer self.alloc.free(fileString);
+        var dirWalker = helpers.DirIterator.init(cwdDir);
 
-            const packageJson = std.json.parseFromSlice(
+        var pkgPathBuf: [std.fs.MAX_PATH_BYTES + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
+        var pkgContentsBuf: [64000]u8 = undefined; // 64kb should be enough for every package.json ?
+        while (dirWalker.next()) |dir| {
+            const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
+                dir,
+                std.fs.path.sep,
+            }) catch unreachable;
+
+            const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+            const packageJson = helpers.readJson(
                 PackageJson,
                 self.alloc,
-                fileString,
-                .{
-                    .ignore_unknown_fields = true,
-                    .allocate = .alloc_if_needed,
-                    .duplicate_field_behavior = .use_last,
-                    .max_value_len = std.math.maxInt(u16),
-                },
+                pkgFile,
+                &pkgContentsBuf,
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.\n", .{entry.dir}) catch unreachable;
+                stdout.print("Failed to parse package.json in {s}.\n", .{dir}) catch unreachable;
                 return;
             };
             defer packageJson.deinit();
 
-            var sciptsIterator = packageJson.value.scripts.map.iterator();
+            const scriptsMap = packageJson.value.scripts.map;
+            var sciptsIterator = scriptsMap.iterator();
 
-            while (sciptsIterator.next()) |mapEntry| {
-                stdout.print("\u{001B}[1;37m{s}\u{001B}[0m:\u{001B}[2m {s}\u{001B}[0m\n", .{
-                    mapEntry.key_ptr.*,
-                    mapEntry.value_ptr.*,
+            while (sciptsIterator.next()) |script| {
+                stdout.print("{s}{s}{s}: {s}{s}{s}\n", .{
+                    colorist.getColor(.WhiteBold),
+                    script.key_ptr.*,
+                    colorist.getColor(.Reset),
+                    //
+                    colorist.getColor(.Dimmed),
+                    script.value_ptr.*,
+                    colorist.getColor(.Reset),
                 }) catch unreachable;
             }
 
-            stdout.print("\nType \u{001B}[2mnrz help\u{001B}[0m to print help message\n", .{}) catch unreachable;
+            stdout.print("\nType {s}nrz -h{s} to print help message\n", .{
+                colorist.getColor(.Dimmed),
+                colorist.getColor(.Reset),
+            }) catch unreachable;
+
+            break;
         } else {
             stdout.print("No package.json was found...\n", .{}) catch unreachable;
         }
-
-        try buffer.flush();
     }
 };
 
 pub fn main() !void {
     @setFloatMode(.optimized);
 
-    var gpa = comptime if (builtin.mode == .ReleaseFast) std.heap.ArenaAllocator.init(std.heap.page_allocator) else std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = comptime if (builtin.mode == .ReleaseFast)
+        std.heap.ArenaAllocator.init(std.heap.page_allocator)
+    else
+        std.heap.GeneralPurposeAllocator(.{}){};
+
     const alloc = gpa.allocator();
     defer _ = gpa.deinit();
 
