@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const buildOptions = @import("build_options");
 
 const string = @import("./string.zig");
 const constants = @import("./constants.zig");
@@ -19,6 +20,7 @@ const Nrz = struct {
         Run,
         List,
         Help,
+        Version,
     },
     command: ?String,
     options: ?String,
@@ -39,6 +41,13 @@ const Nrz = struct {
             return .{
                 .alloc = alloc,
                 .mode = .Help,
+                .command = null,
+                .options = null,
+            };
+        } else if (std.mem.eql(u8, "--version", firstArgument)) {
+            return .{
+                .alloc = alloc,
+                .mode = .Version,
                 .command = null,
                 .options = null,
             };
@@ -301,6 +310,16 @@ const Nrz = struct {
         std.io.getStdOut().writeAll(text) catch unreachable;
     }
 
+    fn version(_: Nrz) void {
+        const stdout = std.io.getStdOut().writer();
+
+        stdout.print("nrz - {d}.{d}.{d}\n", .{
+            buildOptions.version.major,
+            buildOptions.version.minor,
+            buildOptions.version.patch,
+        }) catch unreachable;
+    }
+
     fn list(self: Nrz) !void {
         const colorist = Colorist.new();
 
@@ -383,5 +402,6 @@ pub fn main() !void {
         .Run => try nrz.run(),
         .Help => nrz.help(),
         .List => try nrz.list(),
+        .Version => nrz.version(),
     }
 }
