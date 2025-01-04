@@ -191,7 +191,7 @@ test "Construct path bin dirs" {
 }
 
 pub inline fn findBestShell() ?[]const u8 {
-    const shells = &[_][]const u8{
+    const shells = [_][]const u8{
         "/bin/bash",
         "/usr/bin/bash",
         "/bin/sh",
