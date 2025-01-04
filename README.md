@@ -13,7 +13,7 @@ To build `nrz`:
 2. Build `nrz` with (you will need zig installed):
 
     ```sh
-    zig build --release=fast
+    zig build --release=fast --summary all -Doptimize=ReleaseFast
     ```
 
 3. Add `<repo dir>/zig-out/bin` to `PATH`
