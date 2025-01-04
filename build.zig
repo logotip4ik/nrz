@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const version = std.SemanticVersion{ .major = 1, .minor = 0, .patch = 1 };
+const version = std.SemanticVersion{ .major = 1, .minor = 0, .patch = 2 };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     buildOptions.addOption(std.SemanticVersion, "version", version);
 
     exe.root_module.addOptions("build_options", buildOptions);
+    exe.linkLibC();
 
     b.installArtifact(exe);
 
