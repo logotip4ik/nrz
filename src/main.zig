@@ -6,6 +6,7 @@ const string = @import("./string.zig");
 const constants = @import("./constants.zig");
 const helpers = @import("./helpers.zig");
 const colors = @import("./colors.zig");
+const mem = @import("./mem.zig");
 
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
@@ -92,6 +93,8 @@ const Nrz = struct {
     };
 
     fn run(self: Nrz) !void {
+        @setFloatMode(.optimized);
+
         const stdout = std.io.getStdOut().writer();
 
         const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
@@ -211,7 +214,7 @@ const Nrz = struct {
             colorist.getColor(.Reset),
         }) catch unreachable;
 
-        if (builtin.mode != .ReleaseFast) {
+        if (comptime builtin.mode != .ReleaseFast) {
             // won't run the script, but will allow gpa to log memory leaks
             return;
         }
@@ -382,15 +385,9 @@ const Nrz = struct {
 };
 
 pub fn main() !void {
-    @setFloatMode(.optimized);
-
-    var gpa = comptime if (builtin.mode == .ReleaseFast)
-        std.heap.ArenaAllocator.init(std.heap.page_allocator)
-    else
-        std.heap.GeneralPurposeAllocator(.{}){};
-
-    const alloc = gpa.allocator();
-    defer _ = gpa.deinit();
+    const allocator = comptime mem.getAllocator();
+    const alloc = allocator.allocator();
+    defer allocator.deinit();
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
