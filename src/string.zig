@@ -1,4 +1,5 @@
 const std = @import("std");
+const mem = @import("./mem.zig");
 
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -22,7 +23,7 @@ pub const String = struct {
 
         const buf = try alloc.alloc(u8, bufSize);
 
-        std.mem.copyForwards(u8, buf, string);
+        mem.move(u8, buf, string);
 
         return .{
             .alloc = alloc,
@@ -50,7 +51,7 @@ pub const String = struct {
             try self.allocate();
         }
 
-        std.mem.copyForwards(u8, self.buf[self.len..self.buf.len], string);
+        mem.move(u8, self.buf[self.len..self.buf.len], string);
         self.len += @intCast(string.len);
     }
 

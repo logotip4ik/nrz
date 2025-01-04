@@ -24,3 +24,14 @@ pub fn getAllocator() type {
         };
     }
 }
+
+// https://github.com/ghostty-org/ghostty/blob/main/src/fastmem.zig
+pub inline fn move(comptime T: type, dest: []T, source: []const T) void {
+    if (comptime builtin.link_libc) {
+        _ = memmove(dest.ptr, source.ptr, source.len * @sizeOf(T));
+    } else {
+        std.mem.copyForwards(T, dest, source);
+    }
+}
+
+extern "c" fn memmove(*anyopaque, *const anyopaque, usize) *anyopaque;

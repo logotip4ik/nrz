@@ -141,7 +141,7 @@ const Nrz = struct {
                 // script in package.json could be empty string
                 foundRunnable = .Script;
 
-                std.mem.copyForwards(u8, &pkgPathBuf, script);
+                mem.move(u8, &pkgPathBuf, script);
 
                 runnable = pkgPathBuf[0..script.len];
             } else {
