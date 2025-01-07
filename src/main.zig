@@ -128,7 +128,7 @@ const Nrz = struct {
                 pkgFile,
                 &pkgContentsBuf,
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.\n", .{dir}) catch unreachable;
+                stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
                 return;
             };
             defer packageJson.deinit();
@@ -349,7 +349,7 @@ const Nrz = struct {
                 pkgFile,
                 &pkgContentsBuf,
             ) catch {
-                stdout.print("Failed to parse package.json in {s}.\n", .{dir}) catch unreachable;
+                stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
                 return;
             };
             defer packageJson.deinit();
