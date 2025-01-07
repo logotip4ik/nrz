@@ -37,6 +37,7 @@ const Nrz = struct {
         }
 
         const firstArgument = argv[1];
+        var commandStart: u8 = 1;
 
         if (std.mem.eql(u8, "-h", firstArgument) or std.mem.eql(u8, "--help", firstArgument)) {
             return .{
@@ -52,11 +53,7 @@ const Nrz = struct {
                 .command = null,
                 .options = null,
             };
-        }
-
-        var commandStart: u8 = 1;
-
-        if (std.mem.eql(u8, "run", firstArgument)) {
+        } else if (std.mem.eql(u8, "run", firstArgument)) {
             if (argv.len < 3) {
                 return error.InvalidInput;
             }
