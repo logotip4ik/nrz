@@ -65,6 +65,7 @@ pub fn levenshteinCompare(s: *const []const u8, t: *const []const u8) f16 {
     const hasPrefixBonus = std.mem.startsWith(u8, s2.*, s1.*);
     const insertionCost: f16 = if (hasPrefixBonus) 0.33 else 1;
 
+    @setFloatMode(.optimized);
     var b1: [1024]f16 = undefined;
     var b2: [1024]f16 = undefined;
 
@@ -108,6 +109,7 @@ pub const Suggestor = struct {
         var matched: usize = 0;
 
         for (self.items.items, 0..) |item, i| {
+            @setFloatMode(.optimized);
             const raw_score = levenshteinCompare(item, &query);
             const sum: f16 = @floatFromInt(item.len + query.len);
             const score = 1 - raw_score / sum;

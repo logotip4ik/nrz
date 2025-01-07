@@ -90,8 +90,6 @@ const Nrz = struct {
     };
 
     fn run(self: Nrz) !void {
-        @setFloatMode(.optimized);
-
         const stdout = std.io.getStdOut().writer();
 
         const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
