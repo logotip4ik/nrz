@@ -202,9 +202,13 @@ const Nrz = struct {
         defer self.alloc.free(newPath);
         envs.put("PATH", newPath) catch unreachable;
 
-        var selfExePathBuf: [std.fs.max_path_bytes]u8 = undefined;
-        const selfExePath = std.fs.selfExePath(&selfExePathBuf) catch "";
-        envs.put("npm_execpath", selfExePath) catch unreachable;
+        if (foundRunnable.? == .Script) {
+            var selfExePathBuf: [std.fs.max_path_bytes]u8 = undefined;
+            const selfExePath = std.fs.selfExePath(&selfExePathBuf) catch "";
+            envs.put("npm_execpath", selfExePath) catch unreachable;
+
+            envs.put("INIT_CWD", cwdDir) catch unreachable;
+        }
 
         const options = self.options orelse return;
 
