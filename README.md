@@ -4,9 +4,10 @@ Same as [nrr](https://github.com/ryanccn/nrr) or [nrn](https://github.com/logoti
 
 ## Want to try out ?
 
-You can build it yourself, or use latest artifacts from [build ci](https://github.com/logotip4ik/nrz/actions/workflows/build.yml).
+Download latest build artifact from [build ci](https://github.com/logotip4ik/nrz/actions/workflows/build.yml).
 
-To build `nrz`:
+<details>
+<summary>To build `nrz` localy</summary>
 
 1. Clone this repo
 
@@ -17,6 +18,7 @@ To build `nrz`:
     ```
 
 3. Add `<repo dir>/zig-out/bin` to `PATH`
+</details>
 
 ## Usage
 
@@ -49,28 +51,39 @@ This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src
 ```
 </details>
 
-```sh
-hyperfine --warmup=5 --output=pipe --shell=none '../release/nrn empty' './nrr empty' 'nrz empty' 'node --run empty'
 
-Benchmark 1: ../release/nrn empty
-  Time (mean ± σ):      12.2 ms ±   0.3 ms    [User: 3.0 ms, System: 3.6 ms]
-  Range (min … max):    10.4 ms …  13.9 ms    234 runs
- 
-Benchmark 2: ./nrr empty
-  Time (mean ± σ):       4.8 ms ±   0.2 ms    [User: 0.8 ms, System: 1.5 ms]
-  Range (min … max):     3.2 ms …   5.8 ms    641 runs
- 
-Benchmark 3: nrz empty
-  Time (mean ± σ):       2.9 ms ±   0.3 ms    [User: 0.4 ms, System: 0.9 ms]
-  Range (min … max):     2.2 ms …   3.6 ms    891 runs
- 
-Benchmark 4: node --run empty
-  Time (mean ± σ):      18.6 ms ±   0.2 ms    [User: 12.9 ms, System: 2.2 ms]
-  Range (min … max):    17.6 ms …  20.0 ms    159 runs
- 
+```sh
+$ hyperfine "./nrr empty" "./nrz empty" "npm run empty" "node --run empty" --shell=none --output=pipe
+Benchmark 1: ./nrr empty
+  Time (mean ± σ):       5.2 ms ±   0.5 ms    [User: 1.3 ms, System: 1.6 ms]
+  Range (min … max):     4.5 ms …  11.3 ms    264 runs
+
+Benchmark 2: ./nrz empty
+  Time (mean ± σ):       3.6 ms ±   0.2 ms    [User: 0.7 ms, System: 1.1 ms]
+  Range (min … max):     2.6 ms …   4.5 ms    828 runs
+
+Benchmark 4: npm run empty
+  Time (mean ± σ):     108.3 ms ±   1.1 ms    [User: 73.6 ms, System: 12.5 ms]
+  Range (min … max):   105.3 ms … 110.2 ms    27 runs
+
+Benchmark 5: node --run empty
+  Time (mean ± σ):      32.8 ms ±   0.4 ms    [User: 22.3 ms, System: 2.7 ms]
+  Range (min … max):    32.0 ms …  34.3 ms    87 runs
+
 Summary
-  nrz empty ran
-    1.63 ± 0.19 times faster than ./nrr empty
-    4.14 ± 0.46 times faster than ../release/nrn empty
-    6.35 ± 0.69 times faster than node --run empty
+  ./nrz empty ran
+    1.42 ± 0.15 times faster than ./nrr empty
+    8.98 ± 0.46 times faster than node --run empty
+   29.68 ± 1.52 times faster than npm run empty
+
+$ ./nrr --version
+nrr 0.9.2
+$ nrz --version
+nrz 1.0.4
+$ node --version
+v22.11.0
+$ npm --version
+10.9.0
 ```
+
+> Benched on MacBook M3 Pro, Sequoia 15.2
