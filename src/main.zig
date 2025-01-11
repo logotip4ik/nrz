@@ -332,7 +332,7 @@ const Nrz = struct {
     fn version(_: Nrz) void {
         const stdout = std.io.getStdOut().writer();
 
-        stdout.print("nrz - {d}.{d}.{d}\n", .{
+        stdout.print("nrz {d}.{d}.{d}\n", .{
             buildOptions.version.major,
             buildOptions.version.minor,
             buildOptions.version.patch,
