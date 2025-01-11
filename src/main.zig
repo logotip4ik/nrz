@@ -120,15 +120,31 @@ const Nrz = struct {
             }) catch unreachable;
 
             const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+            defer pkgFile.close();
+
             const packageJson = helpers.readJson(
                 PackageJson,
                 self.alloc,
                 pkgFile,
                 &pkgContentsBuf,
-            ) catch {
-                stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
-                return;
+            ) catch |err| switch (err) {
+                error.FileRead => {
+                    stdout.print("Failed reading: {s}\n", .{pkgPath}) catch unreachable;
+                    return;
+                },
+                error.InvalidJson => {
+                    stdout.print("Failed at json parsing: {s}\n", .{pkgPath}) catch unreachable;
+                    return;
+                },
+                error.InvalidJsonWithFullBuffer => {
+                    stdout.print(
+                        "Failed at json parsing (possibly didn't read all of json. Please open issue with 002 code at logotip4ik/nrz): {s}\n",
+                        .{pkgPath},
+                    ) catch unreachable;
+                    return;
+                },
             };
+
             defer packageJson.deinit();
 
             const scriptsMap = packageJson.value.scripts.map;
@@ -146,7 +162,7 @@ const Nrz = struct {
                     std.fs.path.sep,
                     std.fs.path.sep,
                     commandValue,
-                }) catch @panic("if you see this, open issue at logotip4ik/nrz");
+                }) catch @panic("if you see this, open issue at logotip4ik/nrz with code 003");
 
                 if (std.fs.openFileAbsolute(binPath, .{})) |file| {
                     defer file.close();
@@ -209,20 +225,21 @@ const Nrz = struct {
             colorist.getColor(.Reset),
         }) catch unreachable;
 
+        const shell = helpers.findBestShell() orelse {
+            stdout.print("how are you even working ?\n", .{}) catch unreachable;
+            return;
+        };
+
         if (comptime builtin.mode != .ReleaseFast) {
             // won't run the script, but will allow gpa to log memory leaks
             return;
         }
 
-        if (helpers.findBestShell()) |shell| {
-            _ = std.process.execve(self.alloc, &[_][]const u8{
-                shell,
-                "-c",
-                runnable,
-            }, &envs) catch unreachable;
-        } else {
-            stdout.print("how are you even working ?\n", .{}) catch unreachable;
-        }
+        _ = std.process.execve(self.alloc, &[_][]const u8{
+            shell,
+            "-c",
+            runnable,
+        }, &envs) catch unreachable;
     }
 
     fn printCommandNotFound(

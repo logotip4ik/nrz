@@ -212,8 +212,9 @@ pub inline fn findBestShell() ?[]const u8 {
     return null;
 }
 
-pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8) !std.json.Parsed(T) {
-    const contentsLength = try file.readAll(buf);
+const ReadJsonError = error{ FileRead, InvalidJson, InvalidJsonWithFullBuffer };
+pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8) ReadJsonError!std.json.Parsed(T) {
+    const contentsLength = file.readAll(buf) catch return error.FileRead;
     const contents = buf[0..contentsLength];
 
     return std.json.parseFromSlice(
@@ -227,10 +228,9 @@ pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8
             .max_value_len = std.math.maxInt(u16),
         },
     ) catch {
-        if (contentsLength == buf.len) {
-            std.log.warn("Possibly hit buffer limitation. If you see this, open issue in logotip4ik/nrz with code 002\n", .{});
-        }
-
-        return error.InvalidJson;
+        return if (contentsLength == buf.len)
+            error.InvalidJsonWithFullBuffer
+        else
+            error.InvalidJson;
     };
 }
