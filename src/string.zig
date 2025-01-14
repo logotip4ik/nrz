@@ -91,62 +91,62 @@ test "Correctly initializes" {
     try testing.expectEqual(string.len, initString.len);
 }
 
-// test "Returns correct value" {
-//     const testing = std.testing;
-//
-//     const initString = "help me";
-//     var string = try String.init(testing.allocator, initString);
-//     defer string.deinit();
-//
-//     try testing.expectEqualStrings(initString, string.value());
-// }
-//
-// test "Can concat strings" {
-//     const testing = std.testing;
-//
-//     const initString = "help me";
-//     const string2 = " with this";
-//
-//     var string = try String.init(testing.allocator, initString);
-//     defer string.deinit();
-//
-//     try testing.expectEqualStrings(initString, string.value());
-//
-//     try string.concat(string2);
-//
-//     try testing.expectEqualStrings(initString ++ string2, string.value());
-// }
-//
-// test "multiple strings" {
-//     const testing = std.testing;
-//
-//     const initString1 = "help me";
-//     const initString2 = "with this";
-//
-//     var string1 = try String.init(testing.allocator, initString1);
-//     defer string1.deinit();
-//
-//     var string2 = try String.init(testing.allocator, initString2);
-//     defer string2.deinit();
-//
-//     try testing.expectEqualStrings(initString1, string1.value());
-//     try testing.expectEqualStrings(initString2, string2.value());
-// }
-//
-// test "Find last char" {
-//     const testing = std.testing;
-//
-//     const initString = "ihhehhhhhh";
-//
-//     var string = try String.init(testing.allocator, initString);
-//     defer string.deinit();
-//
-//     const charIdx = string.findLast('i').?;
-//     try testing.expectEqual(0, charIdx);
-//
-//     const char2Idx = string.findLast('a');
-//     try testing.expectEqual(null, char2Idx);
-//
-//     const char3Idx = string.findLast('h').?;
-//     try testing.expectEqual(9, char3Idx);
-// }
+test "Returns correct value" {
+    const testing = std.testing;
+
+    const initString = "help me";
+    var string = try String.init(testing.allocator, initString);
+    defer string.deinit();
+
+    try testing.expectEqualStrings(initString, string.value());
+}
+
+test "Can concat strings" {
+    const testing = std.testing;
+
+    const initString = "help me";
+    const string2 = " with this";
+
+    var string = try String.init(testing.allocator, initString);
+    defer string.deinit();
+
+    try testing.expectEqualStrings(initString, string.value());
+
+    try string.concat(string2);
+
+    try testing.expectEqualStrings(initString ++ string2, string.value());
+}
+
+test "multiple strings" {
+    const testing = std.testing;
+
+    const initString1 = "help me";
+    const initString2 = "with this";
+
+    var string1 = try String.init(testing.allocator, initString1);
+    defer string1.deinit();
+
+    var string2 = try String.init(testing.allocator, initString2);
+    defer string2.deinit();
+
+    try testing.expectEqualStrings(initString1, string1.value());
+    try testing.expectEqualStrings(initString2, string2.value());
+}
+
+test "Find last char" {
+    const testing = std.testing;
+
+    const initString = "ihhehhhhhh";
+
+    var string = try String.init(testing.allocator, initString);
+    defer string.deinit();
+
+    const charIdx = string.findLast('i').?;
+    try testing.expectEqual(0, charIdx);
+
+    const char2Idx = string.findLast('a');
+    try testing.expectEqual(null, char2Idx);
+
+    const char3Idx = string.findLast('h').?;
+    try testing.expectEqual(9, char3Idx);
+}
