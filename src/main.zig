@@ -3,7 +3,6 @@ const builtin = @import("builtin");
 const buildOptions = @import("build_options");
 
 const string = @import("./string.zig");
-const constants = @import("./constants.zig");
 const helpers = @import("./helpers.zig");
 const colors = @import("./colors.zig");
 const mem = @import("./mem.zig");

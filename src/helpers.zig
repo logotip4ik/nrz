@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const string = @import("./string.zig");
-const constants = @import("./constants.zig");
 
 const Allocator = std.mem.Allocator;
 const String = string.String;
