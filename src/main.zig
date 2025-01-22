@@ -2,14 +2,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 const buildOptions = @import("build_options");
 
-const string = @import("./string.zig");
 const helpers = @import("./helpers.zig");
 const colors = @import("./colors.zig");
 const mem = @import("./mem.zig");
 
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const String = string.String;
 const Suggestor = helpers.Suggestor;
 const Colorist = colors.Colorist;
 
@@ -22,10 +20,10 @@ const Nrz = struct {
         Help,
         Version,
     },
-    command: ?String,
-    options: ?String,
+    command: ?[]const u8,
+    options: ?[]const u8,
 
-    pub fn init(alloc: Allocator, argv: [][]const u8) !Nrz {
+    pub fn init(alloc: Allocator, argv: []const []const u8) !Nrz {
         if (argv.len < 2) {
             return .{
                 .alloc = alloc,
@@ -60,28 +58,18 @@ const Nrz = struct {
             commandStart = 2;
         }
 
-        const command = try String.init(alloc, argv[commandStart]);
-
-        var options = try String.init(alloc, "");
-        for (commandStart + 1..argv.len) |i| {
-            try options.concat(argv[i]);
-
-            if (i != argv.len - 1) {
-                try options.concat(" ");
-            }
-        }
+        const options = try helpers.concatStringArray(alloc, argv[commandStart + 1 ..], ' ');
 
         return .{
             .alloc = alloc,
             .mode = .Run,
-            .command = command,
+            .command = argv[commandStart],
             .options = options,
         };
     }
 
     fn deinit(self: Nrz) void {
-        if (self.command) |command| command.deinit();
-        if (self.options) |options| options.deinit();
+        if (self.options) |options| self.alloc.free(options);
     }
 
     const PackageJson = struct {
@@ -89,12 +77,12 @@ const Nrz = struct {
     };
 
     fn run(self: Nrz) !void {
+        const command = self.command orelse return;
+
         const stdout = std.io.getStdOut().writer();
 
         const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
         defer self.alloc.free(cwdDir);
-
-        const commandValue = self.command.?.value();
 
         var availableScripts = std.StringHashMap([]const u8).init(self.alloc);
         defer {
@@ -147,7 +135,7 @@ const Nrz = struct {
             defer packageJson.deinit();
 
             const scriptsMap = packageJson.value.scripts.map;
-            if (scriptsMap.get(commandValue)) |script| {
+            if (scriptsMap.get(command)) |script| {
                 // script in package.json could be empty string
                 foundRunnable = .Script;
 
@@ -160,7 +148,7 @@ const Nrz = struct {
                     std.fs.path.sep,
                     std.fs.path.sep,
                     std.fs.path.sep,
-                    commandValue,
+                    command,
                 }) catch @panic("if you see this, open issue at logotip4ik/nrz with code 003");
 
                 if (std.fs.openFileAbsolute(binPath, .{})) |file| {
@@ -190,7 +178,7 @@ const Nrz = struct {
                 break;
             }
         } else {
-            try self.printCommandNotFound(commandValue, &availableScripts);
+            try self.printCommandNotFound(command, &availableScripts);
             return;
         }
 
@@ -214,7 +202,7 @@ const Nrz = struct {
         if (options.len > 0) {
             runnable = std.fmt.bufPrint(&pkgContentsBuf, "{s} {s}", .{
                 runnable,
-                options.value(),
+                options,
             }) catch unreachable;
         }
 

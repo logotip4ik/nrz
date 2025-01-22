@@ -4,11 +4,14 @@ const builtin = @import("builtin");
 pub fn getAllocator() type {
     if (builtin.mode == .ReleaseFast) {
         return struct {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             pub fn allocator() std.mem.Allocator {
-                return std.heap.c_allocator;
+                return arena.allocator();
             }
 
-            pub fn deinit() void {}
+            pub fn deinit() void {
+                arena.deinit();
+            }
         };
     } else {
         return struct {
@@ -19,6 +22,7 @@ pub fn getAllocator() type {
             }
 
             pub fn deinit() void {
+                _ = gpa.detectLeaks();
                 _ = gpa.deinit();
             }
         };

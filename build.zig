@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const version = std.SemanticVersion{ .major = 1, .minor = 0, .patch = 4 };
+const version = std.SemanticVersion{ .major = 1, .minor = 0, .patch = 5 };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -19,7 +19,6 @@ pub fn build(b: *std.Build) void {
     buildOptions.addOption(std.SemanticVersion, "version", version);
 
     exe.root_module.addOptions("build_options", buildOptions);
-    exe.linkLibC();
 
     b.installArtifact(exe);
 
@@ -46,13 +45,6 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const string_tests = b.addTest(.{
-        .root_source_file = b.path("src/string.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_string_tests = b.addRunArtifact(string_tests);
-
     const helpers_tests = b.addTest(.{
         .root_source_file = b.path("src/helpers.zig"),
         .target = target,
@@ -68,7 +60,6 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_string_tests.step);
     test_step.dependOn(&run_helpers_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 

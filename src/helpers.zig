@@ -1,9 +1,6 @@
 const std = @import("std");
 
-const string = @import("./string.zig");
-
 const Allocator = std.mem.Allocator;
-const String = string.String;
 const assert = std.debug.assert;
 
 pub const DirIterator = struct {
@@ -232,4 +229,39 @@ pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8
         else
             error.InvalidJson;
     };
+}
+
+pub fn concatStringArray(alloc: Allocator, strings: []const []const u8, comptime scalar: u8) ![]const u8 {
+    var stringLen: u8 = @intCast(strings.len - 1); // accounts for number of scalars
+
+    for (strings) |string| {
+        stringLen += @intCast(string.len);
+    }
+
+    const concatenated = try alloc.alloc(u8, stringLen);
+    var wrote: u8 = 0;
+
+    for (strings, 0..) |string, i| {
+        @memcpy(concatenated[wrote .. wrote + string.len], string);
+        wrote += @as(u8, @intCast(string.len)) + 1;
+
+        if (i != strings.len - 1) {
+            concatenated[wrote - 1] = scalar;
+        }
+    }
+
+    return concatenated;
+}
+
+test {
+    const testing = std.testing;
+
+    const concatenated = try concatStringArray(
+        testing.allocator,
+        &[_][]const u8{ "hello", "world" },
+        ' ',
+    );
+    defer testing.allocator.free(concatenated);
+
+    try testing.expectEqualStrings("hello world", concatenated);
 }
