@@ -64,5 +64,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
 
     const clean_step = b.step("clean", "clean caches");
-    clean_step.dependOn(&b.addRemoveDirTree(b.pathFromRoot(".zig-cache/")).step);
+    clean_step.dependOn(&b.addRemoveDirTree(b.path(".zig-cache/")).step);
 }

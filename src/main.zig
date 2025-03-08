@@ -340,7 +340,7 @@ const Nrz = struct {
 
         var dirWalker = helpers.DirIterator.init(cwdDir);
 
-        var pkgPathBuf: [std.fs.MAX_PATH_BYTES + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
+        var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
         var pkgContentsBuf: [64000]u8 = undefined; // 64kb should be enough for every package.json ?
         while (dirWalker.next()) |dir| {
             const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
