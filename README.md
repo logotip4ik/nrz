@@ -35,6 +35,24 @@ nrz eslint ./src
 
 This will run `eslint` from closest `node_modeules/.bin/` folder and pass `./src` as arg.
 
+## Completions
+
+Nrz can also autocomplete scripts for you, to enable autocomplete, add to your shell config file:
+
+```bash
+# For zsh
+source <(nrz --cmp=Zsh)
+
+# Bash
+source <(nrr --cmp=Bash)
+
+# Fish
+source (nrr --cmp=Fish | psub)
+```
+
+> Note: i can't verify if Bash and Fish autocompletes are working, please let me know if they aren't
+> by creating an issue
+
 ## Benchmark
 
 <details>
