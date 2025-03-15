@@ -8,6 +8,7 @@ const Colorist = @import("./colorist.zig");
 const Suggestor = helpers.Suggestor;
 
 const Self = @This();
+const MAX_PKG_SIZE = 64000; // 64kb should be enough for every package.json ?
 
 pub const Shell = enum { Zsh, Bash, Fish };
 
@@ -32,11 +33,11 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
     }
 
     var runnable: []const u8 = undefined;
-    var foundRunnable: ?enum { Script, Bin } = null;
+    var foundRunable: ?enum { Script, Bin } = null;
 
     var dirWalker = helpers.DirIterator.init(cwdDir);
-    var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
-    var pkgContentsBuf: [64000]u8 = undefined; // 64kb should be enough for every package.json ?
+    var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
+    var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
     while (dirWalker.next()) |dir| {
         const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
             dir,
@@ -74,7 +75,7 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
         const scriptsMap = packageJson.value.scripts.map;
         if (scriptsMap.get(command)) |script| {
             // script in package.json could be empty string
-            foundRunnable = .Script;
+            foundRunable = .Script;
 
             mem.move(u8, &pkgPathBuf, script);
 
@@ -91,7 +92,7 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
             if (std.fs.openFileAbsolute(binPath, .{})) |file| {
                 defer file.close();
 
-                foundRunnable = .Bin;
+                foundRunable = .Bin;
                 runnable = binPath;
             } else |_| {
                 var sciptsIterator = scriptsMap.iterator();
@@ -106,11 +107,13 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
             }
         }
 
-        if (foundRunnable != null) {
-            var runDir = try std.fs.openDirAbsolute(dir, .{});
-            defer runDir.close();
+        if (foundRunable) |runableSource| {
+            if (runableSource == .Script) {
+                var runDir = try std.fs.openDirAbsolute(dir, .{});
+                defer runDir.close();
 
-            try runDir.setAsCwd();
+                try runDir.setAsCwd();
+            }
 
             break;
         }
@@ -126,7 +129,7 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
     defer alloc.free(newPath);
     envs.put("PATH", newPath) catch unreachable;
 
-    if (foundRunnable.? == .Script) {
+    if (foundRunable.? == .Script) {
         var selfExePathBuf: [std.fs.max_path_bytes]u8 = undefined;
         const selfExePath = std.fs.selfExePath(&selfExePathBuf) catch "";
         envs.put("npm_execpath", selfExePath) catch unreachable;
@@ -277,8 +280,8 @@ pub fn list(alloc: std.mem.Allocator, config: struct { showAsCompletions: bool =
 
     var dirWalker = helpers.DirIterator.init(cwdDir);
 
-    var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.MAX_NAME_BYTES]u8 = undefined;
-    var pkgContentsBuf: [64000]u8 = undefined; // 64kb should be enough for every package.json ?
+    var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
+    var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
     while (dirWalker.next()) |dir| {
         const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
             dir,
