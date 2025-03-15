@@ -11,17 +11,22 @@ const Allocator = std.mem.Allocator;
 const Suggestor = helpers.Suggestor;
 const Colorist = colors.Colorist;
 
+const Shell = enum { Zsh, Bash, Fish };
+
 const Nrz = struct {
     alloc: Allocator,
 
     mode: enum {
         Run,
         List,
+        ListCompletions,
         Help,
         Version,
+        Completions,
     },
-    command: ?[]const u8,
-    options: ?[]const u8,
+    command: ?[]const u8 = null,
+    options: ?[]const u8 = null,
+    shell: ?Shell = null,
 
     pub fn init(alloc: Allocator, argv: []const []const u8) !Nrz {
         if (argv.len < 2) {
@@ -33,8 +38,8 @@ const Nrz = struct {
             };
         }
 
-        const firstArgument = argv[1];
         var commandStart: u8 = 1;
+        const firstArgument = argv[1];
 
         if (std.mem.eql(u8, "-h", firstArgument) or std.mem.eql(u8, "--help", firstArgument)) {
             return .{
@@ -42,6 +47,21 @@ const Nrz = struct {
                 .mode = .Help,
                 .command = null,
                 .options = null,
+            };
+        } else if (std.mem.startsWith(u8, firstArgument, "--cmp=")) {
+            const shell = std.meta.stringToEnum(Shell, firstArgument["--cmp=".len..]) orelse {
+                return error.UnknownShell;
+            };
+
+            return .{
+                .alloc = alloc,
+                .mode = .Completions,
+                .shell = shell,
+            };
+        } else if (std.mem.eql(u8, "--list-cmp", firstArgument)) {
+            return .{
+                .alloc = alloc,
+                .mode = .ListCompletions,
             };
         } else if (std.mem.eql(u8, "--version", firstArgument)) {
             return .{
@@ -305,7 +325,9 @@ const Nrz = struct {
             \\  [command] - package manager command (run, more to come...) or script name to run. You can skip this as shorthand to `run`
             \\
             \\Options:
-            \\  -h, --help - print this message
+            \\  -h, --help          - print this message
+            \\  --cmp=Zsh|Bash|Fish - generate completions for shells
+            \\  --list-cmp          - list available scripts for completions
             \\
             \\Example:
             \\  nrz              - will print out all scripts from closest package.json
@@ -326,7 +348,7 @@ const Nrz = struct {
         }) catch unreachable;
     }
 
-    fn list(self: Nrz) !void {
+    fn list(self: Nrz, config: struct { showAsCompletions: bool = false }) !void {
         const colorist = Colorist.new();
 
         const cwdDir = std.process.getCwdAlloc(self.alloc) catch return;
@@ -364,26 +386,96 @@ const Nrz = struct {
             var sciptsIterator = scriptsMap.iterator();
 
             while (sciptsIterator.next()) |script| {
-                stdout.print("{s}{s}{s}: {s}{s}{s}\n", .{
-                    colorist.getColor(.WhiteBold),
-                    script.key_ptr.*,
-                    colorist.getColor(.Reset),
-                    //
+                if (config.showAsCompletions) {
+                    for (script.key_ptr.*) |char| {
+                        if (char == ':') {
+                            stdout.writeByte('\\') catch unreachable;
+                        }
+                        stdout.writeByte(char) catch unreachable;
+                    }
+                    stdout.print(" - {s}\n", .{script.value_ptr.*}) catch unreachable;
+                } else {
+                    stdout.print("{s}{s}{s}: {s}{s}{s}\n", .{
+                        colorist.getColor(.WhiteBold),
+                        script.key_ptr.*,
+                        colorist.getColor(.Reset),
+                        //
+                        colorist.getColor(.Dimmed),
+                        script.value_ptr.*,
+                        colorist.getColor(.Reset),
+                    }) catch unreachable;
+                }
+            }
+
+            if (!config.showAsCompletions) {
+                stdout.print("\nType {s}nrz -h{s} to print help message\n", .{
                     colorist.getColor(.Dimmed),
-                    script.value_ptr.*,
                     colorist.getColor(.Reset),
                 }) catch unreachable;
             }
-
-            stdout.print("\nType {s}nrz -h{s} to print help message\n", .{
-                colorist.getColor(.Dimmed),
-                colorist.getColor(.Reset),
-            }) catch unreachable;
-
-            break;
-        } else {
-            stdout.print("No package.json was found...\n", .{}) catch unreachable;
         }
+    }
+
+    pub fn genCompletions(self: Nrz) !void {
+        const shell = self.shell orelse return error.ShellRequired;
+
+        const completions = switch (shell) {
+            .Zsh =>
+            \\#compdef nrz
+            \\_mycommand() {
+            \\  local output=$(nrz --list-cmp)
+            \\  local -a lines=(${(f)output})
+            \\  local -a completions
+            \\
+            \\  for line in "${lines[@]}"; do
+            \\    local value=${line%% - *}
+            \\    local description=${line#* - }
+            \\    completions+=("$value:$description")
+            \\  done
+            \\
+            \\  _describe 'nrz subcommand' completions
+            \\}
+            \\
+            \\compdef _mycommand nrz
+            \\
+            ,
+            .Bash =>
+            \\_nrz_completion() {
+            \\    local cur prev opts
+            \\    COMPREPLY=()
+            \\    cur="${COMP_WORDS[COMP_CWORD]}"
+            \\    prev="${COMP_WORDS[COMP_CWORD-1]}"
+            \\
+            \\    if [[ "$COMP_CWORD" -eq 1 ]]; then
+            \\        local output=$(nrz --list-cmp)
+            \\        local -a subcommands
+            \\        while IFS=' - ' read -r value description; do
+            \\            subcommands+=("$value")
+            \\        done <<< "$output"
+            \\        COMPREPLY=($(compgen -W "${subcommands[*]}" -- "$cur"))
+            \\    fi
+            \\}
+            \\complete -F _nrz_completion nrz
+            \\
+            ,
+            .Fish =>
+            \\function _nrz_completions
+            \\    set -l output (nrz --list-cmp)
+            \\    for line in $output
+            \\        set -l parts (string split " - " $line)
+            \\        if test (count $parts) -ge 2
+            \\            set -l value $parts[1]
+            \\            set -l description (string join " - " $parts[2..])
+            \\            complete -c nrz -a "$value" -d "$description"
+            \\        end
+            \\    end
+            \\end
+            \\
+            \\complete -c nrz -f --no-files -x -n "not __fish_seen_subcommand_from _nrz_completions" -a "(_nrz_completions)"
+            ,
+        };
+
+        std.io.getStdOut().writeAll(completions) catch unreachable;
     }
 };
 
@@ -401,7 +493,9 @@ pub fn main() !void {
     switch (nrz.mode) {
         .Run => try nrz.run(),
         .Help => nrz.help(),
-        .List => try nrz.list(),
+        .List => try nrz.list(.{}),
+        .ListCompletions => try nrz.list(.{ .showAsCompletions = true }),
         .Version => nrz.version(),
+        .Completions => try nrz.genCompletions(),
     }
 }
