@@ -44,10 +44,10 @@ Nrz can also autocomplete scripts for you, to enable autocomplete, add to your s
 source <(nrz --cmp=Zsh)
 
 # Bash
-source <(nrr --cmp=Bash)
+source <(nrz --cmp=Bash)
 
 # Fish
-source (nrr --cmp=Fish | psub)
+source (nrz --cmp=Fish | psub)
 ```
 
 > Note: i can't verify if Bash and Fish autocompletes are working, please let me know if they aren't
