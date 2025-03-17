@@ -266,7 +266,7 @@ pub fn version() void {
     }) catch unreachable;
 }
 
-pub fn list(alloc: std.mem.Allocator, config: struct { showAsCompletions: bool = false }) !void {
+pub fn list(alloc: std.mem.Allocator) !void {
     const colorist = Colorist.new();
 
     const cwdDir = std.process.getCwdAlloc(alloc) catch return;
@@ -304,33 +304,92 @@ pub fn list(alloc: std.mem.Allocator, config: struct { showAsCompletions: bool =
         var sciptsIterator = scriptsMap.iterator();
 
         while (sciptsIterator.next()) |script| {
-            if (config.showAsCompletions) {
-                for (script.key_ptr.*) |char| {
-                    if (char == ':') {
-                        stdout.writeByte('\\') catch unreachable;
-                    }
-                    stdout.writeByte(char) catch unreachable;
-                }
-                stdout.print(" - {s}\n", .{script.value_ptr.*}) catch unreachable;
-            } else {
-                stdout.print("{s}{s}{s}: {s}{s}{s}\n", .{
-                    colorist.getColor(.WhiteBold),
-                    script.key_ptr.*,
-                    colorist.getColor(.Reset),
-                    //
-                    colorist.getColor(.Dimmed),
-                    script.value_ptr.*,
-                    colorist.getColor(.Reset),
-                }) catch unreachable;
-            }
+            stdout.print("{s}{s}{s}: {s}{s}{s}\n", .{
+                colorist.getColor(.WhiteBold),
+                script.key_ptr.*,
+                colorist.getColor(.Reset),
+                //
+                colorist.getColor(.Dimmed),
+                script.value_ptr.*,
+                colorist.getColor(.Reset),
+            }) catch unreachable;
         }
-    }
 
-    if (!config.showAsCompletions) {
+        break;
+    } else {
         stdout.print("\nType {s}nrz -h{s} to print help message\n", .{
             colorist.getColor(.Dimmed),
             colorist.getColor(.Reset),
         }) catch unreachable;
+    }
+}
+
+pub fn listCompletions(alloc: std.mem.Allocator) !void {
+    const writer = std.io.getStdOut().writer();
+    var buffer = std.io.bufferedWriter(writer);
+    defer buffer.flush() catch unreachable;
+
+    var stdout = buffer.writer();
+
+    var scripts = std.StringHashMap([]const u8).init(alloc);
+    defer {
+        var iter = scripts.iterator();
+        while (iter.next()) |entry| {
+            alloc.free(entry.key_ptr.*);
+            alloc.free(entry.value_ptr.*);
+        }
+        scripts.deinit();
+    }
+
+    const cwdDir = std.process.getCwdAlloc(alloc) catch return;
+    defer alloc.free(cwdDir);
+
+    var dirWalker = helpers.DirIterator.init(cwdDir);
+
+    var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
+    var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
+    while (dirWalker.next()) |dir| {
+        const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
+            dir,
+            std.fs.path.sep,
+        }) catch unreachable;
+
+        const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+        const packageJson = helpers.readJson(
+            PackageJson,
+            alloc,
+            pkgFile,
+            &pkgContentsBuf,
+        ) catch {
+            stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
+            return;
+        };
+        defer packageJson.deinit();
+
+        const scriptsMap = packageJson.value.scripts.map;
+        var sciptsIterator = scriptsMap.iterator();
+
+        while (sciptsIterator.next()) |script| {
+            const key = try alloc.dupe(u8, script.key_ptr.*);
+            const value = try alloc.dupe(u8, script.value_ptr.*);
+
+            const got = scripts.getOrPut(key) catch unreachable;
+            if (!got.found_existing) {
+                got.key_ptr.* = key;
+                got.value_ptr.* = value;
+            }
+        }
+    }
+
+    var iter = scripts.iterator();
+    while (iter.next()) |entry| {
+        for (entry.key_ptr.*) |char| {
+            if (char == ':') {
+                stdout.writeByte('\\') catch unreachable;
+            }
+            stdout.writeByte(char) catch unreachable;
+        }
+        stdout.print(" - {s}\n", .{entry.value_ptr.*}) catch unreachable;
     }
 }
 

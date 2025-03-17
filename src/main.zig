@@ -13,7 +13,7 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
 
     if (args.len < 2) {
-        return Nrz.list(alloc, .{});
+        return Nrz.list(alloc);
     }
 
     var commandStart: u8 = 1;
@@ -28,7 +28,7 @@ pub fn main() !void {
 
         return Nrz.genCompletions(shell);
     } else if (std.mem.eql(u8, firstArgument, "--list-cmp")) {
-        return Nrz.list(alloc, .{ .showAsCompletions = true });
+        return Nrz.listCompletions(alloc);
     } else if (std.mem.eql(u8, firstArgument, "--version")) {
         return Nrz.version();
     } else if (std.mem.eql(u8, firstArgument, "run")) {
