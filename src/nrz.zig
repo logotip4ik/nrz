@@ -331,14 +331,14 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
 
     var stdout = buffer.writer();
 
-    var scripts = std.StringHashMap([]const u8).init(alloc);
+    var completions = std.StringHashMap([]const u8).init(alloc);
     defer {
-        var iter = scripts.iterator();
+        var iter = completions.iterator();
         while (iter.next()) |entry| {
             alloc.free(entry.key_ptr.*);
             alloc.free(entry.value_ptr.*);
         }
-        scripts.deinit();
+        completions.deinit();
     }
 
     const cwdDir = std.process.getCwdAlloc(alloc) catch return;
@@ -371,17 +371,47 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
 
         while (sciptsIterator.next()) |script| {
             const key = try alloc.dupe(u8, script.key_ptr.*);
-            const value = try alloc.dupe(u8, script.value_ptr.*);
 
-            const got = scripts.getOrPut(key) catch unreachable;
+            const got = completions.getOrPut(key) catch unreachable;
             if (!got.found_existing) {
+                const value = try alloc.dupe(u8, script.value_ptr.*);
+
                 got.key_ptr.* = key;
                 got.value_ptr.* = value;
+            } else {
+                alloc.free(key);
+            }
+        }
+
+        const binDirPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}node_modules{c}.bin{c}", .{
+            dir,
+            std.fs.path.sep,
+            std.fs.path.sep,
+            std.fs.path.sep,
+        }) catch unreachable;
+
+        var binDir = std.fs.openDirAbsolute(binDirPath, .{ .iterate = true }) catch continue;
+        defer binDir.close();
+
+        var binWalker = binDir.walk(alloc) catch continue;
+        defer binWalker.deinit();
+
+        while (try binWalker.next()) |entry| {
+            const key = try alloc.dupe(u8, entry.path);
+
+            const got = completions.getOrPut(key) catch unreachable;
+            if (!got.found_existing) {
+                const value = try alloc.alloc(u8, 0);
+
+                got.key_ptr.* = key;
+                got.value_ptr.* = value;
+            } else {
+                alloc.free(key);
             }
         }
     }
 
-    var iter = scripts.iterator();
+    var iter = completions.iterator();
     while (iter.next()) |entry| {
         for (entry.key_ptr.*) |char| {
             if (char == ':') {
