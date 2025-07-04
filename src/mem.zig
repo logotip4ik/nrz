@@ -15,7 +15,7 @@ pub fn getAllocator() type {
         };
     } else {
         return struct {
-            var gpa = std.heap.GeneralPurposeAllocator(.{});
+            var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
 
             pub fn allocator() std.mem.Allocator {
                 return gpa.allocator();
