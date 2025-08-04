@@ -427,21 +427,27 @@ pub fn genCompletions(shell: Shell) !void {
     const completions = switch (shell) {
         .Zsh =>
         \\#compdef nrz
-        \\_mycommand() {
-        \\  local output=$(nrz --list-cmp)
-        \\  local -a lines=(${(f)output})
-        \\  local -a completions
+        \\_nrz() {
+        \\  # Only complete custom commands for the first argument
+        \\  if [[ $CURRENT -eq 2 ]]; then
+        \\    local output=$(nrz --list-cmp)
+        \\    local -a lines=(${(f)output})
+        \\    local -a completions
         \\
-        \\  for line in "${lines[@]}"; do
-        \\    local value=${line%% - *}
-        \\    local description=${line#* - }
-        \\    completions+=("$value:$description")
-        \\  done
+        \\    for line in "${lines[@]}"; do
+        \\      local value=${line%% - *}
+        \\      local description=${line#* - }
+        \\      completions+=("$value:$description")
+        \\    done
         \\
-        \\  _describe 'nrz subcommand' completions
+        \\    _describe 'nrz subcommand' completions
+        \\  else
+        \\    # For all other arguments, fall back to default zsh completion
+        \\    _default
+        \\  fi
         \\}
         \\
-        \\compdef _mycommand nrz
+        \\compdef _nrz nrz
         \\
         ,
         .Bash =>
@@ -458,6 +464,9 @@ pub fn genCompletions(shell: Shell) !void {
         \\            subcommands+=("$value")
         \\        done <<< "$output"
         \\        COMPREPLY=($(compgen -W "${subcommands[*]}" -- "$cur"))
+        \\    else
+        \\        # For all other arguments, fall back to default file/directory completion
+        \\        COMPREPLY=($(compgen -f -- "$cur"))
         \\    fi
         \\}
         \\complete -F _nrz_completion nrz
@@ -471,12 +480,16 @@ pub fn genCompletions(shell: Shell) !void {
         \\        if test (count $parts) -ge 2
         \\            set -l value $parts[1]
         \\            set -l description (string join " - " $parts[2..])
-        \\            complete -c nrz -a "$value" -d "$description"
+        \\            echo "$value"$'\t'"$description"
         \\        end
         \\    end
         \\end
         \\
-        \\complete -c nrz -f --no-files -x -n "not __fish_seen_subcommand_from _nrz_completions" -a "(_nrz_completions)"
+        \\# Complete custom commands only for the first argument
+        \\complete -c nrz -f -n "__fish_is_first_token" -a "(_nrz_completions)"
+        \\
+        \\# Allow default file completion for subsequent arguments
+        \\complete -c nrz -n "not __fish_is_first_token"
         \\
         ,
     };
