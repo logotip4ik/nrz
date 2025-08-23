@@ -17,7 +17,10 @@ const PackageJson = struct {
 };
 
 pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch unreachable;
 
     const cwdDir = std.process.getCwdAlloc(alloc) catch return;
     defer alloc.free(cwdDir);
@@ -164,6 +167,8 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
         return;
     }
 
+    stdout.flush() catch unreachable;
+
     _ = std.process.execve(alloc, &[_][]const u8{
         shell,
         "-c",
@@ -176,10 +181,10 @@ fn printCommandNotFound(
     command: []const u8,
     availableScripts: *const std.StringHashMap([]const u8),
 ) !void {
-    const writer = std.io.getStdOut().writer();
-    var buffer = std.io.bufferedWriter(writer);
-    var stdout = buffer.writer();
-    defer buffer.flush() catch unreachable;
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch unreachable;
 
     const colorist = Colorist.new();
 
@@ -198,7 +203,7 @@ fn printCommandNotFound(
         return;
     }
 
-    var availableScriptsList = try std.ArrayList(*[]const u8).initCapacity(alloc, availableScriptsSize);
+    var availableScriptsList = try std.array_list.Managed(*[]const u8).initCapacity(alloc, availableScriptsSize);
     // items inside will be cleared by availableScripts defer statement
     defer availableScriptsList.deinit();
 
@@ -211,7 +216,7 @@ fn printCommandNotFound(
         .items = &availableScriptsList,
     };
 
-    stdout.print("\nDid you mean:\n", .{}) catch unreachable;
+    stdout.print("\nDid you mean?\n", .{}) catch unreachable;
 
     var showed: u8 = 0;
     while (scriptSuggestor.next(command)) |suggested| : (showed += 1) {
@@ -253,11 +258,14 @@ pub fn help() void {
         \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
         \\
     ;
-    std.io.getStdOut().writeAll(text) catch unreachable;
+    std.fs.File.stdout().writeAll(text) catch unreachable;
 }
 
 pub fn version() void {
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch unreachable;
 
     stdout.print("nrz {d}.{d}.{d}\n", .{
         buildOptions.version.major,
@@ -272,11 +280,10 @@ pub fn list(alloc: std.mem.Allocator) !void {
     const cwdDir = std.process.getCwdAlloc(alloc) catch return;
     defer alloc.free(cwdDir);
 
-    const writer = std.io.getStdOut().writer();
-    var buffer = std.io.bufferedWriter(writer);
-    defer buffer.flush() catch unreachable;
-
-    var stdout = buffer.writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch unreachable;
 
     var dirWalker = helpers.DirIterator.init(cwdDir);
 
@@ -325,11 +332,10 @@ pub fn list(alloc: std.mem.Allocator) !void {
 }
 
 pub fn listCompletions(alloc: std.mem.Allocator) !void {
-    const writer = std.io.getStdOut().writer();
-    var buffer = std.io.bufferedWriter(writer);
-    defer buffer.flush() catch unreachable;
-
-    var stdout = buffer.writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch unreachable;
 
     var completions = std.StringHashMap([]const u8).init(alloc);
     defer {
@@ -494,5 +500,5 @@ pub fn genCompletions(shell: Shell) !void {
         ,
     };
 
-    std.io.getStdOut().writeAll(completions) catch unreachable;
+    std.fs.File.stdout().writeAll(completions) catch unreachable;
 }

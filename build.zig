@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const version = std.SemanticVersion{ .major = 1, .minor = 1, .patch = 4 };
+const version = std.SemanticVersion{ .major = 1, .minor = 1, .patch = 5 };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -8,11 +8,13 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "nrz",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .single_threaded = true,
-        .strip = optimize == .ReleaseFast,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .single_threaded = true,
+            .strip = optimize == .ReleaseFast,
+        }),
     });
 
     const buildOptions = b.addOptions();
@@ -24,11 +26,13 @@ pub fn build(b: *std.Build) void {
 
     const exe_check = b.addExecutable(.{
         .name = "nrz",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .single_threaded = true,
-        .strip = optimize == .ReleaseFast,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .single_threaded = true,
+            .strip = optimize == .ReleaseFast,
+        }),
     });
 
     const check = b.step("check", "zls build check");
@@ -46,16 +50,20 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const helpers_tests = b.addTest(.{
-        .root_source_file = b.path("src/helpers.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/helpers.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const run_helpers_tests = b.addRunArtifact(helpers_tests);
 
     const exe_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const run_exe_tests = b.addRunArtifact(exe_tests);
 

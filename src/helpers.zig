@@ -90,7 +90,7 @@ pub fn levenshteinCompare(s: *const []const u8, t: *const []const u8) f16 {
 }
 
 pub const Suggestor = struct {
-    items: *std.ArrayList(*[]const u8),
+    items: *std.array_list.Managed(*[]const u8),
 
     pub fn next(self: Suggestor, query: []const u8) ?*[]const u8 {
         if (self.items.items.len == 0) {
@@ -123,7 +123,7 @@ pub const Suggestor = struct {
 test {
     const testing = std.testing;
 
-    var available = std.ArrayList(*[]const u8).init(testing.allocator);
+    var available = std.array_list.Managed(*[]const u8).init(testing.allocator);
     defer available.deinit();
 
     const strings = [_][]const u8{
