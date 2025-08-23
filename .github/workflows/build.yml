@@ -33,7 +33,7 @@ jobs:
       - name: Install zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.1
 
       - name: Build
         run: zig build --release=fast --summary all -Doptimize=ReleaseFast -Dtarget=${{ matrix.cpu }}-${{ matrix.os }}
