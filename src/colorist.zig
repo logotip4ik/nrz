@@ -8,22 +8,16 @@ pub const Color = enum {
     Reset,
 };
 
-noColor: bool,
+termInfo: std.Io.tty.Config,
 
 pub fn new() Self {
-    var buffer: [512]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const alloc = fba.allocator();
-
-    const noColorEnv = std.process.getEnvVarOwned(alloc, "NO_COLOR") catch "";
-
     return Self{
-        .noColor = !std.mem.eql(u8, noColorEnv, ""),
+        .termInfo = .detect(std.fs.File.stdout()),
     };
 }
 
 pub inline fn getColor(self: Self, comptime color: Color) []const u8 {
-    if (self.noColor) {
+    if (self.termInfo == .no_color) {
         return "";
     }
 

@@ -128,8 +128,9 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
     var envs = try std.process.getEnvMap(alloc);
     defer envs.deinit();
 
-    const newPath = helpers.concatBinPathsToPATH(alloc, envs.get("PATH").?, cwdDir);
+    const newPath = helpers.concatBinPathsToPATH(alloc, envs.get("PATH") orelse "", cwdDir);
     defer alloc.free(newPath);
+
     envs.put("PATH", newPath) catch unreachable;
 
     if (foundRunable.? == .Script) {
@@ -262,7 +263,7 @@ pub fn help() void {
 }
 
 pub fn version() void {
-    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_buffer: [10]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
