@@ -1,6 +1,6 @@
 .{
     .name = .nrz,
-    .version = "1.1.8",
+    .version = "1.1.9",
     .fingerprint = 0x10d1bc6eef5a58ef,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{},
