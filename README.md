@@ -4,7 +4,15 @@ Same as [nrr](https://github.com/ryanccn/nrr) or [nrn](https://github.com/logoti
 
 ## Want to try out ?
 
-Download latest build artifact from [build ci](https://github.com/logotip4ik/nrz/actions/workflows/build.yml).
+Download latest build artifact from [latest release](https://github.com/logotip4ik/nrz/releases/latest)
+
+or run this script to automaticaly download executable:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/logotip4ik/nrz/main/install.sh | bash
+```
+
+or use [copper](https://github.com/logotip4ik/copper): `copper add nrz`
 
 <details>
 <summary>To build `nrz` localy</summary>
