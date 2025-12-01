@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+
+permissions:
+  contents: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+            artifact_name: linux-x86_64
+          - os: macos-latest
+            target: x86_64-macos
+            artifact_name: macos-x86_64
+          - os: macos-latest
+            target: aarch64-macos
+            artifact_name: macos-aarch64
+          - os: windows-latest
+            target: x86_64-windows
+            artifact_name: windows-x86_64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+          cache-key: ${{ matrix.artifact_name }}
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Build project
+        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} --summary all -Dstrip
+
+      - name: Prepare artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p artifacts
+          cp zig-out/bin/* artifacts/ || true
+          cd artifacts
+          tar -czf ../nrz-${{ matrix.artifact_name }}.tar.gz *
+
+      - name: Generate artifact attestation (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: nrz-${{ matrix.artifact_name }}.tar.gz
+
+      - name: Prepare artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          Copy-Item zig-out/bin/* artifacts/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path artifacts/* -DestinationPath nrz-${{ matrix.artifact_name }}.zip
+
+      - name: Generate artifact attestation (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: nrz-${{ matrix.artifact_name }}.zip
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nrz-${{ matrix.artifact_name }}
+          path: |
+            nrz-${{ matrix.artifact_name }}.tar.gz
+            nrz-${{ matrix.artifact_name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Build Changelog
+        id: github_release
+        uses: mikepenz/release-changelog-builder-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: false
+          prerelease: false
+          body: ${{steps.github_release.outputs.changelog}}
