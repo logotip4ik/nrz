@@ -24,11 +24,6 @@ case "$OS_RAW" in
     TARGET_OS="macos"
     EXTENSION="tar.gz"
     ;;
-  # Handle Windows environments where bash might be running (Git Bash, WSL, etc.)
-  MINGW*|MSYS*|CYGWIN*)
-    TARGET_OS="windows"
-    EXTENSION="zip"
-    ;;
   *)
     echo "Error: Unsupported operating system '$OS_RAW'."
     exit 1
