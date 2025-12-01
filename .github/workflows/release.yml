@@ -40,13 +40,12 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          cache-key: ${{ matrix.artifact_name }}
 
       - name: Run tests
         run: zig build test
 
       - name: Build project
-        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} --summary all -Dstrip
+        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }} --summary all
 
       - name: Prepare artifacts (Unix)
         if: runner.os != 'Windows'
