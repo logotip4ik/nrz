@@ -231,9 +231,9 @@ pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8
     };
 }
 
-pub fn concatStringArray(alloc: Allocator, strings: []const []const u8, comptime scalar: u8) !?[]const u8 {
+pub fn concatStringArray(alloc: Allocator, strings: []const []const u8, comptime scalar: u8) ![]const u8 {
     if (strings.len == 0) {
-        return null;
+        return "";
     }
 
     var stringLen: u8 = @intCast(strings.len - 1); // accounts for number of scalars

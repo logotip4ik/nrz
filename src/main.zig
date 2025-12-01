@@ -40,7 +40,7 @@ pub fn main() !void {
     }
 
     const options = try helpers.concatStringArray(alloc, args[commandStart + 1 ..], ' ');
-    defer if (options) |opt| alloc.free(opt);
+    defer alloc.free(options);
 
-    try Nrz.run(alloc, args[commandStart], options orelse "");
+    try Nrz.run(alloc, args[commandStart], options);
 }
