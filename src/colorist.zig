@@ -22,8 +22,8 @@ pub inline fn getColor(self: Self, comptime color: Color) []const u8 {
     }
 
     return switch (color) {
-        .WhiteBold => "\u{001B}[1;37m",
-        .Dimmed => "\u{001B}[2m",
-        .Reset => "\u{001B}[0m",
+        .WhiteBold => "\x1b[1;97m",
+        .Dimmed => "\x1b[2m",
+        .Reset => "\x1b[0m",
     };
 }
