@@ -11,6 +11,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const alloc = arena.allocator();
 
     var threads: std.Io.Threaded = .init_single_threaded;
+    // `replaceProcess` will fail without this. `init_single_threaded` uses failing allocator and
+    // `replaceProcess` needs allocator for ... something.
+    threads.allocator = alloc;
+
     defer threads.deinit();
 
     const io = threads.io();

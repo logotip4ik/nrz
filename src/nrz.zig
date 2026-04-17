@@ -172,21 +172,18 @@ pub fn run(
         return;
     };
 
-    if (comptime builtin.mode != .ReleaseFast) {
-        // won't run the script, but will allow gpa to log memory leaks
-        return;
-    }
-
     stdout.flush() catch unreachable;
 
-    std.process.replace(io, .{
+    const err = std.process.replace(io, .{
         .argv = &[_][]const u8{
             shell,
             "-c",
             runnable,
         },
         .environ_map = envs,
-    }) catch unreachable;
+    });
+
+    std.log.err("can't execute '{s} -c {s}', because: {t}", .{shell, runnable, err});
 }
 
 fn printCommandNotFound(
