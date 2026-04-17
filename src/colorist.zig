@@ -8,16 +8,21 @@ pub const Color = enum {
     Reset,
 };
 
-termInfo: std.Io.tty.Config,
+mode: std.Io.Terminal.Mode,
 
-pub fn new() Self {
+pub fn init(io: std.Io, environ: std.process.Environ) Self {
     return Self{
-        .termInfo = .detect(std.fs.File.stdout()),
+        .mode = std.Io.Terminal.Mode.detect(
+            io,
+            std.Io.File.stdout(),
+            environ.containsUnemptyConstant("NO_COLOR"),
+            environ.containsUnemptyConstant("CLICOLOR_FORCE"),
+        ) catch .no_color,
     };
 }
 
 pub inline fn getColor(self: Self, comptime color: Color) []const u8 {
-    if (self.termInfo == .no_color) {
+    if (self.mode == .no_color) {
         return "";
     }
 

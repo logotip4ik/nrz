@@ -188,7 +188,7 @@ test "Construct path bin dirs" {
     try testing.expectEqualStrings("path:path2:/dev/nrz/node_modules/.bin:/dev/node_modules/.bin", newpath);
 }
 
-pub inline fn findBestShell() ?[]const u8 {
+pub inline fn findBestShell(io: std.Io) ?[]const u8 {
     const shells = [_][]const u8{
         "/bin/bash",
         "/usr/bin/bash",
@@ -200,7 +200,7 @@ pub inline fn findBestShell() ?[]const u8 {
     };
 
     inline for (shells) |shell| {
-        if (std.fs.accessAbsolute(shell, .{})) {
+        if (std.Io.Dir.accessAbsolute(io, shell, .{})) {
             return shell;
         } else |_| {}
     }
@@ -209,9 +209,7 @@ pub inline fn findBestShell() ?[]const u8 {
 }
 
 const ReadJsonError = error{ FileRead, InvalidJson, InvalidJsonWithFullBuffer };
-pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8) ReadJsonError!std.json.Parsed(T) {
-    const contentsLength = file.readAll(buf) catch return error.FileRead;
-    const contents = buf[0..contentsLength];
+pub fn readJson(comptime T: type, alloc: Allocator, contents: []u8) ReadJsonError!std.json.Parsed(T) {
 
     return std.json.parseFromSlice(
         T,
@@ -224,10 +222,7 @@ pub fn readJson(comptime T: type, alloc: Allocator, file: std.fs.File, buf: []u8
             .max_value_len = std.math.maxInt(u16),
         },
     ) catch {
-        return if (contentsLength == buf.len)
-            error.InvalidJsonWithFullBuffer
-        else
-            error.InvalidJson;
+        return error.InvalidJson;
     };
 }
 

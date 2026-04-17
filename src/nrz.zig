@@ -16,13 +16,21 @@ const PackageJson = struct {
     scripts: std.json.ArrayHashMap([]const u8),
 };
 
-pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !void {
+pub fn run(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    colorist: Colorist,
+    envs: *std.process.Environ.Map,
+    command: []const u8,
+    options: []const u8
+) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
 
-    const cwdDir = std.process.getCwdAlloc(alloc) catch return;
+    const cwdDir = std.process.currentPathAlloc(io, alloc) catch return;
     defer alloc.free(cwdDir);
 
     var availableScripts = std.StringHashMap([]const u8).init(alloc);
@@ -38,23 +46,28 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
     var runnable: []const u8 = undefined;
     var foundRunable: ?enum { Script, Bin } = null;
 
+    var fileReaderBuf: [16 * 1024]u8 = undefined;
+
     var dirWalker = helpers.DirIterator.init(cwdDir);
     var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
     var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
+
     while (dirWalker.next()) |dir| {
         const pkgPath = std.fmt.bufPrint(&pkgPathBuf, "{s}{c}package.json", .{
             dir,
             std.fs.path.sep,
         }) catch unreachable;
 
-        const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
-        defer pkgFile.close();
+        const pkgFile = std.Io.Dir.openFileAbsolute(io, pkgPath, .{}) catch continue;
+        defer pkgFile.close(io);
+
+        var pkgFileReader = pkgFile.reader(io, &fileReaderBuf);
+        const contentsLen = try pkgFileReader.interface.readSliceShort(&pkgContentsBuf);
 
         const packageJson = helpers.readJson(
             PackageJson,
             alloc,
-            pkgFile,
-            &pkgContentsBuf,
+            pkgContentsBuf[0..contentsLen],
         ) catch |err| switch (err) {
             error.FileRead => {
                 stdout.print("Failed reading: {s}\n", .{pkgPath}) catch unreachable;
@@ -92,8 +105,8 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
                 command,
             }) catch @panic("if you see this, open issue at logotip4ik/nrz with code 003");
 
-            if (std.fs.openFileAbsolute(binPath, .{})) |file| {
-                defer file.close();
+            if (std.Io.Dir.openFileAbsolute(io, binPath, .{})) |file| {
+                defer file.close(io);
 
                 foundRunable = .Bin;
                 runnable = binPath;
@@ -112,21 +125,18 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
 
         if (foundRunable) |runableSource| {
             if (runableSource == .Script) {
-                var runDir = try std.fs.openDirAbsolute(dir, .{});
-                defer runDir.close();
+                var runDir = try std.Io.Dir.openDirAbsolute(io, dir, .{});
+                defer runDir.close(io);
 
-                try runDir.setAsCwd();
+                try std.process.setCurrentDir(io, runDir);
             }
 
             break;
         }
     } else {
-        try printCommandNotFound(alloc, command, &availableScripts);
+        try printCommandNotFound(alloc, io, colorist, command, &availableScripts);
         return;
     }
-
-    var envs = try std.process.getEnvMap(alloc);
-    defer envs.deinit();
 
     const newPath = helpers.concatBinPathsToPATH(alloc, envs.get("PATH") orelse "", cwdDir);
     defer alloc.free(newPath);
@@ -135,8 +145,8 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
 
     if (foundRunable.? == .Script) {
         var selfExePathBuf: [std.fs.max_path_bytes]u8 = undefined;
-        const selfExePath = std.fs.selfExePath(&selfExePathBuf) catch "";
-        envs.put("npm_execpath", selfExePath) catch unreachable;
+        const len = std.process.executablePath(io, &selfExePathBuf) catch 0;
+        envs.put("npm_execpath", selfExePathBuf[0..len]) catch unreachable;
 
         envs.put("INIT_CWD", cwdDir) catch unreachable;
     }
@@ -148,7 +158,6 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
         }) catch unreachable;
     }
 
-    const colorist = Colorist.new();
     stdout.print("{s}${s} {s}{s}{s}\n\n", .{
         colorist.getColor(.WhiteBold),
         colorist.getColor(.Reset),
@@ -158,7 +167,7 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
         colorist.getColor(.Reset),
     }) catch unreachable;
 
-    const shell = helpers.findBestShell() orelse {
+    const shell = helpers.findBestShell(io) orelse {
         stdout.print("how are you even working ?\n", .{}) catch unreachable;
         return;
     };
@@ -170,24 +179,27 @@ pub fn run(alloc: std.mem.Allocator, command: []const u8, options: []const u8) !
 
     stdout.flush() catch unreachable;
 
-    _ = std.process.execve(alloc, &[_][]const u8{
-        shell,
-        "-c",
-        runnable,
-    }, &envs) catch unreachable;
+    std.process.replace(io, .{
+        .argv = &[_][]const u8{
+            shell,
+            "-c",
+            runnable,
+        },
+        .environ_map = envs,
+    }) catch unreachable;
 }
 
 fn printCommandNotFound(
     alloc: std.mem.Allocator,
+    io: std.Io,
+    colorist: Colorist,
     command: []const u8,
     availableScripts: *const std.StringHashMap([]const u8),
 ) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
-
-    const colorist = Colorist.new();
 
     stdout.print("{s}command not found:{s} {s}{s}{s}\n", .{
         colorist.getColor(.Dimmed),
@@ -239,7 +251,7 @@ fn printCommandNotFound(
     }
 }
 
-pub fn help() void {
+pub fn help(io: std.Io) !void {
     const text =
         \\Supa-Fast™ cross package manager scripts runner and more
         \\
@@ -259,12 +271,13 @@ pub fn help() void {
         \\  nrz eslint ./src - run eslint command from closest node_modules with ./src argument
         \\
     ;
-    std.fs.File.stdout().writeAll(text) catch unreachable;
+    var writer = std.Io.File.stdout().writer(io, &.{});
+    try writer.interface.writeAll(text);
 }
 
-pub fn version() void {
+pub fn version(io: std.Io) void {
     var stdout_buffer: [10]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
 
@@ -275,18 +288,18 @@ pub fn version() void {
     }) catch unreachable;
 }
 
-pub fn list(alloc: std.mem.Allocator) !void {
-    const colorist = Colorist.new();
-
-    const cwdDir = std.process.getCwdAlloc(alloc) catch return;
+pub fn list(alloc: std.mem.Allocator, io: std.Io, colorist: Colorist) !void {
+    const cwdDir = std.process.currentPathAlloc(io, alloc) catch return;
     defer alloc.free(cwdDir);
 
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
 
     var dirWalker = helpers.DirIterator.init(cwdDir);
+
+    var fileReaderBuf: [16 * 1024]u8 = undefined;
 
     var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
     var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
@@ -296,12 +309,16 @@ pub fn list(alloc: std.mem.Allocator) !void {
             std.fs.path.sep,
         }) catch unreachable;
 
-        const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+        const pkgFile = std.Io.Dir.openFileAbsolute(io, pkgPath, .{}) catch continue;
+        defer pkgFile.close(io);
+
+        var pkgFileReader = pkgFile.reader(io, &fileReaderBuf);
+        const contentsLen = try pkgFileReader.interface.readSliceShort(&pkgContentsBuf);
+
         const packageJson = helpers.readJson(
             PackageJson,
             alloc,
-            pkgFile,
-            &pkgContentsBuf,
+            pkgContentsBuf[0..contentsLen],
         ) catch {
             stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
             return;
@@ -332,9 +349,9 @@ pub fn list(alloc: std.mem.Allocator) !void {
     }
 }
 
-pub fn listCompletions(alloc: std.mem.Allocator) !void {
+pub fn listCompletions(alloc: std.mem.Allocator, io: std.Io) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
     defer stdout.flush() catch unreachable;
 
@@ -348,11 +365,12 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
         completions.deinit();
     }
 
-    const cwdDir = std.process.getCwdAlloc(alloc) catch return;
+    const cwdDir = std.process.currentPathAlloc(io, alloc) catch return;
     defer alloc.free(cwdDir);
 
     var dirWalker = helpers.DirIterator.init(cwdDir);
 
+    var fileReaderBuf: [16 * 1024]u8 = undefined;
     var pkgPathBuf: [std.fs.max_path_bytes + 1 + std.fs.max_name_bytes]u8 = undefined;
     var pkgContentsBuf: [MAX_PKG_SIZE]u8 = undefined;
     while (dirWalker.next()) |dir| {
@@ -361,12 +379,16 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
             std.fs.path.sep,
         }) catch unreachable;
 
-        const pkgFile = std.fs.openFileAbsolute(pkgPath, .{}) catch continue;
+        const pkgFile = std.Io.Dir.openFileAbsolute(io, pkgPath, .{}) catch continue;
+        defer pkgFile.close(io);
+
+        var pkgFileReader = pkgFile.reader(io, &fileReaderBuf);
+        const contentsLen = try pkgFileReader.interface.readSliceShort(&pkgContentsBuf);
+
         const packageJson = helpers.readJson(
             PackageJson,
             alloc,
-            pkgFile,
-            &pkgContentsBuf,
+            pkgContentsBuf[0..contentsLen],
         ) catch {
             stdout.print("Failed to parse {s}\n", .{pkgPath}) catch unreachable;
             return;
@@ -397,14 +419,14 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
             std.fs.path.sep,
         }) catch unreachable;
 
-        var binDir = std.fs.openDirAbsolute(binDirPath, .{ .iterate = true }) catch continue;
-        defer binDir.close();
+        var binDir = std.Io.Dir.openDirAbsolute(io, binDirPath, .{ .iterate = true }) catch continue;
+        defer binDir.close(io);
 
-        var binWalker = binDir.walk(alloc) catch continue;
-        defer binWalker.deinit();
 
-        while (try binWalker.next()) |entry| {
-            const key = try alloc.dupe(u8, entry.path);
+        var binWalker = binDir.iterate();
+
+        while (try binWalker.next(io)) |entry| {
+            const key = try alloc.dupe(u8, entry.name);
 
             const got = completions.getOrPut(key) catch unreachable;
             if (!got.found_existing) {
@@ -430,7 +452,7 @@ pub fn listCompletions(alloc: std.mem.Allocator) !void {
     }
 }
 
-pub fn genCompletions(shell: Shell) !void {
+pub fn genCompletions(io: std.Io, shell: Shell) !void {
     const completions = switch (shell) {
         .Zsh =>
         \\#compdef nrz
@@ -501,5 +523,6 @@ pub fn genCompletions(shell: Shell) !void {
         ,
     };
 
-    std.fs.File.stdout().writeAll(completions) catch unreachable;
+    var writer = std.Io.File.stdout().writer(io, &.{});
+    try writer.interface.writeAll(completions);
 }
