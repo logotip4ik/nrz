@@ -258,9 +258,10 @@ pub fn help(io: std.Io) !void {
         \\  [command] - package manager command (run, more to come...) or script name to run. You can skip this as shorthand to `run`
         \\
         \\Options:
-        \\  -h, --help          - print this message
-        \\  --cmp=Zsh|Bash|Fish - generate completions for shells
-        \\  --list-cmp          - list available scripts for completions
+        \\  -h, --help                  - print this message
+        \\  --cmp=Zsh|Bash|Fish         - generate completions for shells
+        \\  --list-cmp                  - list available scripts for completions
+        \\  --prefix=dir, --cwd=dir     - set working directory
         \\
         \\Example:
         \\  nrz              - will print out all scripts from closest package.json

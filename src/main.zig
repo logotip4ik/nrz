@@ -11,8 +11,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const alloc = arena.allocator();
 
     var threads: std.Io.Threaded = .init_single_threaded;
-    // `replaceProcess` will fail without this. `init_single_threaded` uses failing allocator and
-    // `replaceProcess` needs allocator for ... something.
     threads.allocator = alloc;
 
     defer threads.deinit();
@@ -26,27 +24,56 @@ pub fn main(init: std.process.Init.Minimal) !void {
         return Nrz.list(alloc, io, colorist);
     }
 
-    var commandStart: u8 = 1;
-    const firstArgument = args[1];
+    var cwdChange: ?[]const u8 = null;
+    var argsSkipped: u8 = 0;
 
-    if (std.mem.eql(u8, firstArgument, "-h") or std.mem.eql(u8, firstArgument, "--help")) {
+    const firstArgument = args[1];
+    if (std.mem.startsWith(u8, firstArgument, "--prefix=")) {
+        cwdChange = firstArgument["--prefix=".len..];
+        argsSkipped = 1;
+    } else if (std.mem.startsWith(u8, firstArgument, "--cwd=")) {
+        cwdChange = firstArgument["--cwd=".len..];
+        argsSkipped = 1;
+    } else if (std.mem.eql(u8, firstArgument, "--prefix") or std.mem.eql(u8, firstArgument, "--cwd")) {
+        if (args.len >= 3) {
+            cwdChange = args[2];
+            argsSkipped = 2;
+        }
+    }
+
+    if (cwdChange) |dir| {
+        const cwdDir = try std.Io.Dir.openDirAbsolute(io, dir, .{});
+        defer cwdDir.close(io);
+        try std.process.setCurrentDir(io, cwdDir);
+    }
+
+    var commandStart: u8 = 1 + argsSkipped;
+    const effectiveArgs = args[commandStart..];
+
+    if (effectiveArgs.len < 1) {
+        return Nrz.list(alloc, io, colorist);
+    }
+
+    const command = effectiveArgs[0];
+
+    if (std.mem.eql(u8, command, "-h") or std.mem.eql(u8, command, "--help")) {
         return try Nrz.help(io);
-    } else if (std.mem.startsWith(u8, firstArgument, "--cmp=")) {
-        const shell = std.meta.stringToEnum(Nrz.Shell, firstArgument["--cmp=".len..]) orelse {
+    } else if (std.mem.startsWith(u8, command, "--cmp=")) {
+        const shell = std.meta.stringToEnum(Nrz.Shell, command["--cmp=".len..]) orelse {
             return error.UnknownShell;
         };
 
         return Nrz.genCompletions(io, shell);
-    } else if (std.mem.eql(u8, firstArgument, "--list-cmp")) {
+    } else if (std.mem.eql(u8, command, "--list-cmp")) {
         return Nrz.listCompletions(alloc, io);
-    } else if (std.mem.eql(u8, firstArgument, "--version")) {
+    } else if (std.mem.eql(u8, command, "--version")) {
         return Nrz.version(io);
-    } else if (std.mem.eql(u8, firstArgument, "run")) {
-        if (args.len < 3) {
+    } else if (std.mem.eql(u8, command, "run")) {
+        if (effectiveArgs.len < 2) {
             return error.InvalidInput;
         }
 
-        commandStart = 2;
+        commandStart += 1;
     }
 
     const options = try helpers.concatStringArray(alloc, args[commandStart + 1 ..], ' ');
@@ -60,6 +87,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
         colorist,
         &envs,
         args[commandStart],
-        options
+        options,
     );
 }
