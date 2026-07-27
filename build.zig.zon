@@ -1,8 +1,8 @@
 .{
     .name = .nrz,
-    .version = "1.2.1",
+    .version = "1.3.0",
     .fingerprint = 0x10d1bc6eef5a58ef,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
