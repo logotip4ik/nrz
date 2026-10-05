@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .single_threaded = true,
-            .strip = optimize == .ReleaseFast,
+            .strip = optimize == .fast,
         }),
     });
 
@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .single_threaded = true,
-            .strip = optimize == .ReleaseFast,
+            .strip = optimize == .fast,
         }),
     });
 
@@ -45,9 +45,7 @@ pub fn build(b: *std.Build) void {
 
     run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
