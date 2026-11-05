@@ -22,7 +22,7 @@ pub fn run(
     colorist: Colorist,
     envs: *std.process.Environ.Map,
     command: []const u8,
-    options: []const u8
+    options: []const u8,
 ) !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
@@ -151,12 +151,18 @@ pub fn run(
         envs.put("INIT_CWD", cwdDir) catch unreachable;
     }
 
+    const needs_allocation = runnable.len + 1 + options.len >= pkgContentsBuf.len;
     if (options.len > 0) {
-        runnable = std.fmt.bufPrint(&pkgContentsBuf, "{s} {s}", .{
+        runnable = if (needs_allocation) std.fmt.allocPrint(alloc, "{s} {s}", .{
+            runnable,
+            options,
+        }) catch unreachable else std.fmt.bufPrint(&pkgContentsBuf, "{s} {s}", .{
             runnable,
             options,
         }) catch unreachable;
     }
+
+    defer if (needs_allocation) alloc.free(runnable);
 
     stdout.print("{s}${s} {s}{s}{s}\n\n", .{
         colorist.getColor(.WhiteBold),
@@ -183,7 +189,7 @@ pub fn run(
         .environ_map = envs,
     });
 
-    std.log.err("can't execute '{s} -c {s}', because: {t}", .{shell, runnable, err});
+    std.log.err("can't execute '{s} -c {s}', because: {t}", .{ shell, runnable, err });
 }
 
 fn printCommandNotFound(
@@ -419,7 +425,6 @@ pub fn listCompletions(alloc: std.mem.Allocator, io: std.Io) !void {
 
         var binDir = std.Io.Dir.openDirAbsolute(io, binDirPath, .{ .iterate = true }) catch continue;
         defer binDir.close(io);
-
 
         var binWalker = binDir.iterate();
 
